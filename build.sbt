@@ -2,7 +2,7 @@ name := "fm-http"
 
 organization := "com.frugalmechanic"
 
-version := "0.1"
+version := "0.2-SNAPSHOT"
 
 description := "Async Http Client & Server for Scala"
 
