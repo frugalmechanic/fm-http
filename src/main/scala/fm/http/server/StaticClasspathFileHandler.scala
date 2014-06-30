@@ -1,0 +1,86 @@
+/*
+ * Copyright 2014 Frugal Mechanic (http://frugalmechanic.com)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package fm.http.server
+
+import fm.common.Implicits._
+import fm.common.{ClassUtil, Logging, Resource}
+import fm.http.{MimeTypes, MutableHeaders, Status}
+import java.io.{File, InputStream}
+import java.net.{URL, URLConnection}
+import org.joda.time.{DateTime, LocalDateTime}
+import scala.collection.JavaConverters._
+
+object StaticClasspathFileHandler {
+  def apply(root: String): StaticClasspathFileHandler = apply(new File(root), defaultClassLoader)
+  def apply(root: String, classLoader: ClassLoader): StaticClasspathFileHandler = apply(new File(root), classLoader)
+  
+  def apply(root: File): StaticClasspathFileHandler = apply(root, defaultClassLoader)
+  
+  private def defaultClassLoader: ClassLoader = {
+    val cl: ClassLoader = Thread.currentThread().getContextClassLoader()
+    if (null != cl) cl else getClass.getClassLoader()
+  }
+}
+
+final case class StaticClasspathFileHandler(root: File, classLoader: ClassLoader) extends StaticFileHandlerBase with Logging {
+  
+  private def getClasspathResource(f: File): Option[URL] = {
+    if (null == f) return None
+    
+    val path: String = f.toString().stripLeading("/")
+    val urls: Vector[URL] = classLoader.getResources(path).asScala.toVector
+    
+    if (urls.size > 1) {
+      logger.warn(s"Found multiple resources that match '$path' : $urls")
+      return None
+    }
+    
+    urls.headOption
+  }
+  
+  protected def isValidFile(f: File): Boolean = ClassUtil.classpathFileExists(f)
+  
+  protected def isValidDir(f: File): Boolean = ClassUtil.classpathDirExists(f)
+  
+  protected def handleNormal(request: Request, f: File, expirationSeconds: Int): Option[RequestHandler] = {
+    val url: URL = getClasspathResource(f).getOrElse{ return None }
+    
+    // Optimization - Use the normal file system handling if the URL is a file 
+    if (url.isFile) return handleFileSystemFile(request, url.toFile, expirationSeconds)
+    
+    val conn: URLConnection = url.openConnection()
+    
+    val headers: MutableHeaders = MutableHeaders()
+    headers.date = DateTime.now
+    
+    val ifModifiedSince: Option[DateTime] = request.headers.ifModifiedSince
+    
+    if (ifModifiedSince.exists{ _.getMillis() == conn.getLastModified() }) {
+      return Some(RequestHandler.constant(Response.NotModified(headers)))
+    }
+    
+    // We don't want these headers returned with a 304 Not Modified response:
+    // http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.3.5
+    headers.contentType = MimeTypes.forFile(f).getOrElse(MimeTypes.BINARY)
+    headers.lastModified = new DateTime(conn.getLastModified())
+    headers.cacheControl = "public, max-age="+expirationSeconds
+    headers.expires = DateTime.now().plusSeconds(expirationSeconds)
+    
+    val contentLength: Option[Long] = Some(conn.getContentLengthLong()).filter{ _ >= 0 }
+
+    Some(RequestHandler.constant(InputStreamResponse(Status.OK, headers, conn.getInputStream(), contentLength)))
+  }
+}
