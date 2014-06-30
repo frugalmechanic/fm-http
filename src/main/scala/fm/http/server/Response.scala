@@ -15,7 +15,7 @@
  */
 package fm.http.server
 
-import java.io.File
+import java.io.{File, InputStream}
 import scala.concurrent.Future
 import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.handler.codec.http._
@@ -45,14 +45,14 @@ object Response {
   
   def apply(status: Status, body: String): Response = plain(status, body, Headers.empty)
   def apply(status: Status, body: String, headers: Headers): Response = plain(status, body, headers)
+  def apply(status: Status, headers: Headers, body: String): Response = plain(status, body, headers)
   def apply(status: Status): Response = apply(status, Headers.empty)
   def apply(status: Status, headers: Headers): Response = FullResponse(status, headers, Unpooled.EMPTY_BUFFER)
   
   def plain(status: Status): Response = plain(status, Headers.empty)
   def plain(status: Status, headers: Headers): Response = plain(status, s"${status.code} ${status.msg}", headers)
+  def plain(status: Status, headers: Headers, body: String): Response = plain(status, body, headers)
   def plain(status: Status, body: String, headers: Headers): Response = FullResponse(status, headers, Unpooled.copiedBuffer(body, CharsetUtil.UTF_8))
-  
-  
 }
 
 sealed trait Response extends Message {
@@ -86,6 +86,17 @@ final case class AsyncResponse(status: Status, headers: Headers, head: LinkedHtt
  * This represents a File that we want to send back to the user 
  */
 final case class FileResponse(status: Status, headers: Headers, file: File) extends Response with FileMessage {
+  def toHttpResponse(version: HttpVersion): HttpResponse = {
+    val r = new DefaultHttpResponse(version, status.toHttpResponseStatus)
+    r.headers().add(headers.nettyHeaders)
+    r
+  }
+}
+
+/**
+ * This represents an InputStream that we want to send back to the user 
+ */
+final case class InputStreamResponse(status: Status, headers: Headers, input: InputStream, length: Option[Long]) extends Response with InputStreamMessage {
   def toHttpResponse(version: HttpVersion): HttpResponse = {
     val r = new DefaultHttpResponse(version, status.toHttpResponseStatus)
     r.headers().add(headers.nettyHeaders)

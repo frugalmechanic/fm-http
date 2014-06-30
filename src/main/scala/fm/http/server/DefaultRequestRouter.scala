@@ -19,7 +19,7 @@ import scala.concurrent.Future
 import io.netty.handler.codec.http.HttpResponseStatus
 import fm.http.Status
 
-abstract class DefaultRequestRouter extends RequestRouter with RequestHandler {
+abstract class DefaultRequestRouter extends RequestRouterBase with RequestHandler {
 
   protected val handler: PartialFunction[Request, Future[Response]]
   

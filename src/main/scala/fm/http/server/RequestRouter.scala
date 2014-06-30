@@ -16,7 +16,9 @@
 package fm.http.server
 
 import fm.common.Implicits._
-import scala.concurrent.Future
+import fm.common.Logging
+import java.util.concurrent.atomic.AtomicBoolean
+import scala.concurrent.{ExecutionContext, Future}
 
 object RequestRouter {
   def apply(a: RequestRouter, b: RequestRouter): RequestRouter = OrElseRequestRouter(a, b)
@@ -29,16 +31,16 @@ trait RequestRouter {
   /** Given a request lookup a RequestHandler that can satisfy it */
   def lookup(request: Request): Option[RequestHandler]
   
-  /** Called before the web server starts up */
+  /** Called before the web server starts up -- Should be idempotent */
   def beforeStartup(): Unit = {}
   
-  /** Called after the web server is running but before ping is enabled */
+  /** Called after the web server is running but before ping is enabled -- Should be idempotent */
   def afterStartup(): Unit = {}
   
-  /** Called when web server shutdown is requested but before actually shutting down */
+  /** Called when web server shutdown is requested but before actually shutting down -- Should be idempotent */
   def beforeShutdown(): Unit = {}
   
-  /** Called once web server shutdown is completed */
+  /** Called once web server shutdown is completed -- Should be idempotent */
   def afterShutdown(): Unit = {}
   
   /**
@@ -50,6 +52,48 @@ trait RequestRouter {
    * If this request router does not match a request then send the request to the specified default handler
    */
   final def withDefaultHandler(handler: RequestHandler): RequestRouter = OrElseRequestRouter(this, SingleHandlerRequestRouter(handler))
+  
+  /**
+   * If a RequestHandler throws an Exception then run this handler.  Useful for showing an Error Page when a request fails
+   */
+  final def withErrorHandler(handler: RequestHandler)(implicit ec: ExecutionContext): RequestRouter = ErrorHandlerRequestRouter(this, handler)
+}
+
+/**
+ * Proxies to another RequestRouter
+ */
+trait RequestRouterProxy extends RequestRouter {
+  protected def self: RequestRouter
+  
+  def lookup(request: Request): Option[RequestHandler] = self.lookup(request)
+  
+  override def beforeStartup() : Unit = self.beforeStartup()
+  override def afterStartup()  : Unit = self.afterStartup()
+  override def beforeShutdown(): Unit = self.beforeShutdown()
+  override def afterShutdown() : Unit = self.afterShutdown()
+}
+
+/**
+ * Adds wrappers around the lifecycle calls to ensure they only get called once
+ */
+abstract class RequestRouterBase extends RequestRouter {
+  private[this] val _beforeStartup : AtomicBoolean = new AtomicBoolean(false)
+  private[this] val _afterStartup  : AtomicBoolean = new AtomicBoolean(false)
+  private[this] val _beforeShutdown: AtomicBoolean = new AtomicBoolean(false)
+  private[this] val _afterShutdown : AtomicBoolean = new AtomicBoolean(false)
+  
+  final override def beforeStartup() : Unit = if ( _beforeStartup.compareAndSet(false, true)) beforeStartupImpl()
+  final override def afterStartup()  : Unit = if (  _afterStartup.compareAndSet(false, true)) afterStartupImpl()
+  final override def beforeShutdown(): Unit = if (_beforeShutdown.compareAndSet(false, true)) beforeShutdownImpl()
+  final override def afterShutdown() : Unit = if ( _afterShutdown.compareAndSet(false, true)) afterShutdownImpl()
+  
+  //
+  // Override these (if you need them)
+  //
+  protected def beforeStartupImpl() : Unit = {}
+  protected def afterStartupImpl()  : Unit = {}
+  protected def beforeShutdownImpl(): Unit = {}
+  protected def afterShutdownImpl() : Unit = {}
 }
 
 final case object EmptyRequestRouter extends RequestRouter {
@@ -62,6 +106,37 @@ final case class OrElseRequestRouter(a: RequestRouter, b: RequestRouter) extends
   override def afterStartup():   Unit = { a.afterStartup()  ; b.afterStartup()   }
   override def beforeShutdown(): Unit = { a.beforeShutdown(); b.beforeShutdown() }
   override def afterShutdown():  Unit = { a.afterShutdown() ; b.afterShutdown()  }
+}
+
+final case class ErrorHandlerRequestRouter(router: RequestRouter, errorHandler: RequestHandler)(implicit ec: ExecutionContext) extends RequestRouter with Logging {
+  def lookup(request: Request): Option[RequestHandler] = router.lookup(request).map{ wrap }
+  
+  /**
+   * There are 2 places errors can be thrown.  Either by the RequestHandler or the Future
+   * that the RequestHandler returns.  We catch both of them.
+   */
+  private def wrap(handler: RequestHandler): RequestHandler = (request: Request) => {
+    try {
+      handler(request).recoverWith{ 
+        case ex: Throwable =>
+          log(ex)
+          errorHandler(request)
+      }
+    } catch {
+      case ex: Throwable =>
+        log(ex)
+        errorHandler(request)
+    }
+  }
+  
+  private def log(ex: Throwable): Unit = {
+    logger.error(ex)
+  }
+  
+  override def beforeStartup():  Unit = router.beforeStartup()
+  override def afterStartup():   Unit = router.afterStartup()
+  override def beforeShutdown(): Unit = router.beforeShutdown()
+  override def afterShutdown():  Unit = router.afterShutdown()
 }
 
 final case class MultiRequestRouter(routers: Seq[RequestRouter]) extends RequestRouter {

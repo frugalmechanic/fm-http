@@ -36,6 +36,8 @@ object RouteMatchers {
      *    
      * By default a variable will match everything up to the next / character.
      * If the * is used then the / character is also included.
+     * 
+     * TODO: make this work with query params.  e.g.:  /path/$var?foo=$foo
      */
     def simple = RichPathMatchingRegex(makeSimpleRegex(sc))
     def p = RichPathMatchingRegex(makeSimpleRegex(sc))
@@ -97,19 +99,15 @@ object RouteMatchers {
   
   implicit def StringToDefaultHttpMethodMatcher(s: String): HttpMethodMatcher = GET
   
-  implicit def DefaultHttpMethodMatcher {
-    def unapply(request: Request): Option[String] = if (request.method == GET) Some(request.path) else None
-  }
-  
   //
   // These can be used to extract explicit types from the interpolation matching:
   //    case => simple"/path/${INT(id)}" => call(id)  // id is of type Int
   //
-  object INT { def unapply(x: String): Option[Int] = x.toIntOption }
+  object INT  { def unapply(x: String): Option[Int]  = x.toIntOption  }
   object LONG { def unapply(x: String): Option[Long] = x.toLongOption }
   
-  val GET = HttpMethodMatcher(HttpMethod.GET)
+  val GET  = HttpMethodMatcher(HttpMethod.GET)
   val HEAD = HttpMethodMatcher(HttpMethod.HEAD)
   val POST = HttpMethodMatcher(HttpMethod.POST)
-  val PUT = HttpMethodMatcher(HttpMethod.PUT)
+  val PUT  = HttpMethodMatcher(HttpMethod.PUT)
 }

@@ -15,22 +15,29 @@
  */
 package fm.http.server
 
-import java.io._
+import com.frugalmechanic.optparse._
+import fm.common.Implicits._
+import fm.common.Logging
+import java.io.{BufferedReader, InputStreamReader, OutputStream, PrintStream}
 import java.net.{URL, HttpURLConnection}
 import java.lang.management.ManagementFactory
-import scala.util.control.Breaks._
-import scala.collection.JavaConverters._
 import jnr.posix.POSIXFactory
 import jnr.posix.util.DefaultPOSIXHandler
 import org.slf4j.LoggerFactory
-
-import com.frugalmechanic.optparse._
-import fm.common.Logging
+import scala.util.control.Breaks._
+import scala.collection.JavaConverters._
 
 abstract class HttpServerApp extends Logging {
+  /** The RequestRouter that will handle requests */
   protected def router: RequestRouter
+  
+  /** The secret key used by the ControlHandler */
   protected def AuthKey: String
+  
+  /** The email username to use (if using email logging)  */
   protected def EmailUser: String
+  
+  /** The email password to use (if using email logging)  */
   protected def EmailPass: String
   
   private[this] val DETATCH_STRING: String = "\u0000"*4 // 4 NULL Characters
@@ -257,8 +264,8 @@ abstract class HttpServerApp extends Logging {
 
     assert(null != emailAppender, "Email Appender is null!")
     if(null != emailAppender) {
-      emailAppender.setUsername(EmailUser)
-      emailAppender.setPassword(EmailPass)
+      if (EmailUser.isNotBlank) emailAppender.setUsername(EmailUser)
+      if (EmailPass.isNotBlank) emailAppender.setPassword(EmailPass)
       emailAppender.start() // start() has to be called for it to pick up the new username/password
       rootLogger.addAppender(emailAppender)
     }

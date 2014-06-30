@@ -36,6 +36,10 @@ final case class ControlHandler(server: HttpServer, authKey: String) extends Def
   @volatile var enabled: Boolean = false
   
   private def authorized(request: Request): Boolean = {
+    // We don't allow non-localhost requests
+    if (request.remoteIp.isNotLocalhost) return false
+    
+    // TODO: maybe make this something fancier (maybe using the MessageCrypto class once it's moved out of the internal repository)
     val res: Boolean = request.params.getFirst("key").exists{ _ == authKey }
     if (!res) logger.error("Unauthorized ControlHandler Access Attempt: "+request)
     res

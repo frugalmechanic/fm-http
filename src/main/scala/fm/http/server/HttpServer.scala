@@ -94,7 +94,7 @@ final case class HttpServer (port: Int = 8080, router: RequestRouter, authKey: S
     b.childOption[java.lang.Boolean](ChannelOption.TCP_NODELAY, true)
     b.childOption[java.lang.Boolean](ChannelOption.AUTO_READ, false)  // ChannelHandlerContext.read() must be explicitly called when we want a message read
     b.childHandler(new ChannelInitializer[SocketChannel] {
-       def initChannel(ch: SocketChannel): Unit = {         
+       def initChannel(ch: SocketChannel): Unit = {
          val p: ChannelPipeline = ch.pipeline()
          
          p.addLast("decoder",       new HttpRequestDecoder())

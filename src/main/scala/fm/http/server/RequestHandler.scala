@@ -23,8 +23,3 @@ object RequestHandler {
     def apply(request: Request): Future[Response] = res
   } 
 }
-
-//trait RequestHandler {
-//  /** Handle the request */
-//  def handle(request: Request): Future[Response]
-//}

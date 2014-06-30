@@ -19,10 +19,10 @@ import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.channel.{Channel, ChannelHandlerContext, DefaultFileRegion, SimpleChannelInboundHandler}
 import io.netty.channel.group.ChannelGroup
 import io.netty.handler.codec.http._
-import io.netty.handler.stream.ChunkedFile
+import io.netty.handler.stream.{ChunkedFile, ChunkedStream}
 import io.netty.util.{AttributeKey, CharsetUtil}
 
-import java.io.{File, FileNotFoundException, RandomAccessFile}
+import java.io.{File, FileNotFoundException, InputStream, RandomAccessFile}
 import java.util.Date
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
@@ -128,9 +128,10 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
       logger.error("Caught Exception waiting for Response Future - Sending Error Response", ex)
       sendFullResponse(request, prepareResponse(request, makeErrorResponse(Status.INTERNAL_SERVER_ERROR).toFullHttpResponse(version), wantKeepAlive))
     }.onSuccess { res: Response => res match {
-      case full:  FullResponse  => sendFullResponse(request, prepareResponse(request, full.toFullHttpResponse(version), wantKeepAlive))
-      case async: AsyncResponse => sendAsyncResponse(request, prepareResponse(request, async.toHttpResponse(version), wantKeepAlive), async.head)
-      case file:  FileResponse  => 
+      case full:  FullResponse        => sendFullResponse(request, prepareResponse(request, full.toFullHttpResponse(version), wantKeepAlive))
+      case async: AsyncResponse       => sendAsyncResponse(request, prepareResponse(request, async.toHttpResponse(version), wantKeepAlive), async.head)
+      case input: InputStreamResponse => sendInputStreamResponse(request, prepareResponse(request, input.toHttpResponse(version), wantKeepAlive), input.input, input.length)
+      case file:  FileResponse        => 
         try {
           sendFileResponse(request, prepareResponse(request, file.toHttpResponse(version), wantKeepAlive), file.file)
         } catch {
@@ -208,6 +209,26 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
   }
   
   /**
+   * For sending an InputStream-based response
+   */
+  private def sendInputStreamResponse(request: Request, response: HttpResponse, input: InputStream, length: Option[Long])(implicit ctx: ChannelHandlerContext): Unit = {
+    trace("sendInputStreamResponse")
+    
+    // Set the Content-Length if we know the length of the InputStream
+    if (includeContentLength(request, response)) length.foreach { HttpHeaders.setContentLength(response, _) }
+    
+    // The NettyContentCompressor can't handle a ChunkedFile (which is a ChunkedInput[ByteBuf]) 
+    // so we wrap it in HttpContentChunkedInput to turn it into a ChunkedInput[HttpContent]
+    val obj: HttpContentChunkedInput = HttpContentChunkedInput(new ChunkedStream(input))
+    
+    ctx.write(response)
+    ctx.writeAndFlush(obj).onComplete { res =>
+      if (res.isFailure) onResponseComplete(request, res, HttpHeaders.isKeepAlive(response))
+      else ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{ onResponseComplete(request, _, HttpHeaders.isKeepAlive(response)) }
+    }
+  }
+  
+  /**
    * For sending a File-based response
    */
   private def sendFileResponse(request: Request, response: HttpResponse, file: File)(implicit ctx: ChannelHandlerContext): Unit = {
@@ -219,7 +240,7 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     val length: Long = raf.length()
     
     // Set the Content-Length since we know the length of the file
-    HttpHeaders.setContentLength(response, length)
+    if (includeContentLength(request, response)) HttpHeaders.setContentLength(response, length)
     
     // If we might GZIP/DEFLATE this content then we can't use sendfile since it would
     // bypass the NettyContentCompressor which would have already modified the Content-Encoding 
@@ -240,8 +261,6 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
       if (res.isFailure) onResponseComplete(request, res, HttpHeaders.isKeepAlive(response))
       else ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{ onResponseComplete(request, _, HttpHeaders.isKeepAlive(response)) }
     }
-    
-    //ctx.writeAndFlush(new ChunkedFile(file)).onComplete{ onResponseComplete(_, HttpHeaders.isKeepAlive(response)) }
   }
   
   /**
@@ -251,7 +270,7 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     trace("sendFullResponse")
     
     // Set the Content-Length since this is a full response which should have a known size
-    HttpHeaders.setContentLength(response, response.content.readableBytes())
+    if (includeContentLength(request, response)) HttpHeaders.setContentLength(response, response.content.readableBytes())
     
     ctx.writeAndFlush(response).onComplete{ onResponseComplete(request, _, HttpHeaders.isKeepAlive(response)) }
   }
@@ -335,6 +354,22 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
       // If this is a keep-alive connection then we allow reading of the next request otherwise we close the connection
       case Success(_) => if (readNextRequest) ctx.read() else ctx.close()
       case Failure(ex) => trace("onResponseComplete - FAILURE", ex)
+    }
+  }
+  
+  /** 
+   *  Can this type of response include a ContentLength?
+   *  
+   *  http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.3
+   */
+  private def includeContentLength(request: Request, response: HttpResponse): Boolean = {
+    if (request.method == HttpMethod.HEAD) return false
+    
+    response.getStatus.code match {
+      case 100 | 101 | 102 => false
+      case 204 => false
+      case 304 => false
+      case _ => true
     }
   }
   
