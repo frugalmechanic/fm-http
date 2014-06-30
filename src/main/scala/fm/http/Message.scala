@@ -16,7 +16,7 @@
 package fm.http
 
 import io.netty.buffer.ByteBuf
-import java.io.File
+import java.io.{File, InputStream}
 
 /**
  * Represents an HTTP Message (either a Request or Response)
@@ -38,4 +38,9 @@ trait AsyncMessage extends Message {
 trait FileMessage extends Message {
   /** This file is the body */
   def file: File
+}
+
+trait InputStreamMessage extends Message {
+  /** The input stream is the body */
+  def input: InputStream
 }

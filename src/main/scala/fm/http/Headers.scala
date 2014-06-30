@@ -360,6 +360,7 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   def expect_=(v: String): Unit = set(Names.EXPECT, v)
   def expect_=(v: Option[String]): Unit = set(Names.EXPECT, v)
   
+  def expires_=(v: String): Unit = set(Names.EXPIRES, v)
   def expires_=(v: DateTime): Unit = setDate(Names.EXPIRES, v)
   def expires_=(v: Option[DateTime]): Unit = setDate(Names.EXPIRES, v)
   
