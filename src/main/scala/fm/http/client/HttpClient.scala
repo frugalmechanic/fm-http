@@ -161,7 +161,7 @@ final case class HttpClient(
   useConnectionPool: Boolean = true, // Should we re-use connections? (Use HTTP Keep Alive?)
   maxConnectionsPerHost: Int = 8,     // Only applies if useConnectionPool is true
   maxConnectionIdleDuration: FiniteDuration = 30.seconds,
-  defaultResponseTimeout: Duration = Duration.Inf // The maximum time to wait for a Response
+  defaultResponseTimeout: Duration = 5.minutes // The maximum time to wait for a Response
 ) extends Closeable with Logging {
   import HttpClient.{EndPoint, ThreadFactory, TimeoutTask, workerGroup}
   
