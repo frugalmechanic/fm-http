@@ -15,6 +15,12 @@
  */
 package fm.http.client
 
+
+import fm.common.Implicits._
+import fm.common.{IP, Logging, ScheduledTaskRunner, URL}
+import fm.http._
+import fm.netty._
+
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.{Channel, ChannelFuture, ChannelInitializer, ChannelOption, ChannelPipeline}
 import io.netty.channel.group.{ChannelGroup, DefaultChannelGroup}
@@ -36,10 +42,6 @@ import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
-
-import fm.http._
-import fm.common.{IP, Logging, ScheduledTaskRunner, URL}
-import fm.common.Implicits._
 
 
 /**
@@ -161,7 +163,8 @@ final case class HttpClient(
   useConnectionPool: Boolean = true, // Should we re-use connections? (Use HTTP Keep Alive?)
   maxConnectionsPerHost: Int = 8,     // Only applies if useConnectionPool is true
   maxConnectionIdleDuration: FiniteDuration = 30.seconds,
-  defaultResponseTimeout: Duration = 5.minutes // The maximum time to wait for a Response
+  defaultResponseTimeout: Duration = 5.minutes, // The maximum time to wait for a Response
+  defaultConnectTimeout: Duration = 30.seconds // The maximum time to wait to connect to a server
 ) extends Closeable with Logging {
   import HttpClient.{EndPoint, ThreadFactory, TimeoutTask, workerGroup}
   
@@ -202,7 +205,7 @@ final case class HttpClient(
   }
   
   // Access to this should be synchronized (which means we shouldn't even bother with a ConcurrentHashMap...)
-  private val endpointMap: ConcurrentHashMap[EndPoint, WeakReference[ChannelPool]] = new ConcurrentHashMap()
+  private[this] val endpointMap: ConcurrentHashMap[EndPoint, WeakReference[ChannelPool]] = new ConcurrentHashMap()
   
   private def closeIdleConnections(): Unit = endpointMap.synchronized {
     val it = endpointMap.values().iterator()
@@ -236,7 +239,7 @@ final case class HttpClient(
   }
   
   
-  private val traceSep: String = "======================================================================================================================="
+  private[this] val traceSep: String = "======================================================================================================================="
   
   private def execute0(url: URL, request: Request, timeout: Duration): Future[AsyncResponse] = {
     if (logger.isTraceEnabled) logger.trace(s"Sending Request:\n$traceSep\n$request\n$traceSep\n")
@@ -302,62 +305,71 @@ final case class HttpClient(
   private def makeNewChannel(host: String, port: Int, ssl: Boolean, socksProxy: Option[(String, Int)] = None)(pool: ChannelPool): Future[Channel] = {
     val promise: Promise[Channel] = Promise()
     
-    socksProxy match {
-      case Some((socksHost, socksPort)) =>
-        import NettyHttpClientPipelineHandler.{SOCKSInit, SOCKSAuth, SOCKSConnect}
-        import scala.collection.JavaConverters._
-        
-        val connectFuture: ChannelFuture = client.connect(socksHost, socksPort)
-        val socksInitPromise: Promise[SocksInitResponse] = Promise()
-        //val socksAuthPromise: Promise[SocksAuthResponse] = Promise()
-        val socksConnectPromise: Promise[SocksCmdResponse] = Promise()
-        
-        val ch: Channel = connectFuture.channel()
-        
-        val addrType: SocksAddressType = if (IP.isValid(host)) SocksAddressType.IPv4 else SocksAddressType.DOMAIN
-        
-        // Once connected we need to tell the Socks Proxy who we want to connect to
-        connectFuture.onComplete{
-          case Failure(ex) => socksConnectPromise.tryFailure(ex)
-          case Success(_) =>
-            ch.pipeline().addFirst("socks_encoder", new SocksMessageEncoder)
-            ch.pipeline().addFirst("socks_decoder", new SocksInitResponseDecoder)
-            
-            ch.writeAndFlush(SOCKSInit(new SocksInitRequest(List(SocksAuthScheme.NO_AUTH).asJava), socksInitPromise))
-            
-            socksInitPromise.future.onComplete {
-              case Failure(ex) => socksConnectPromise.tryFailure(ex)
-              case Success(initResponse) =>
-                if (initResponse.authScheme != SocksAuthScheme.NO_AUTH) socksConnectPromise.tryFailure(new IOException("Invalid AUTH_SCHEME: "+initResponse.authScheme)) else {
-                  ch.pipeline().addFirst("socks_decoder", new SocksCmdResponseDecoder)
-                  ch.writeAndFlush(SOCKSConnect(new SocksCmdRequest(SocksCmdType.CONNECT, addrType, host, port), socksConnectPromise))
-                }
-            }
-        }
+    val connectFuture: ChannelFuture = socksProxy match {
+      case Some((socksHost, socksPort)) => client.connect(socksHost, socksPort)
+      case None                         => client.connect(host, port)
+    }
+    
+    val ch: Channel = connectFuture.channel()
+    
+    if (defaultConnectTimeout.isFinite()) HttpClient.enableTimeoutTask(promise, defaultConnectTimeout)
+    
+    promise.future.onComplete {
+      case Success(_)  => 
+      // If the connect promise fails (e.g. we timeout) then make sure we close the channel
+      case Failure(ex) => ch.close()
+    }
+    
+    if (socksProxy.isDefined) {
+      import NettyHttpClientPipelineHandler.{SOCKSInit, SOCKSAuth, SOCKSConnect}
+      import scala.collection.JavaConverters._
+      
+      
+      val socksInitPromise: Promise[SocksInitResponse] = Promise()
+      //val socksAuthPromise: Promise[SocksAuthResponse] = Promise()
+      val socksConnectPromise: Promise[SocksCmdResponse] = Promise()   
 
-        socksConnectPromise.future.onComplete{
-          case Success(cmdResponse) => 
-            ch.pipeline().remove("socks_encoder")
-            Try{ ch.pipeline().remove("socks_decoder") }
-            
-            if (cmdResponse.cmdStatus() == SocksCmdStatus.SUCCESS) {
-              if (!promise.trySuccess(ch)) ch.close()             
-            } else {
-              promise.tryFailure(new Exception("SOCKS Proxy Failure: "+cmdResponse.cmdStatus.name))
-              ch.close()
-            }
-            
-          case Failure(ex) => promise.tryFailure(ex)
-        }
-        
-      case None =>
-        val connectFuture: ChannelFuture = client.connect(host, port)
-        val ch: Channel = connectFuture.channel()
+      val addrType: SocksAddressType = if (IP.isValid(host)) SocksAddressType.IPv4 else SocksAddressType.DOMAIN
+      
+      // Once connected we need to tell the Socks Proxy who we want to connect to
+      connectFuture.onComplete{
+        case Failure(ex) => socksConnectPromise.tryFailure(ex)
+        case Success(_) =>
+          ch.pipeline().addFirst("socks_encoder", new SocksMessageEncoder)
+          ch.pipeline().addFirst("socks_decoder", new SocksInitResponseDecoder)
+          
+          ch.writeAndFlush(SOCKSInit(new SocksInitRequest(List(SocksAuthScheme.NO_AUTH).asJava), socksInitPromise))
+          
+          socksInitPromise.future.onComplete {
+            case Failure(ex) => socksConnectPromise.tryFailure(ex)
+            case Success(initResponse) =>
+              if (initResponse.authScheme != SocksAuthScheme.NO_AUTH) socksConnectPromise.tryFailure(new IOException("Invalid AUTH_SCHEME: "+initResponse.authScheme)) else {
+                ch.pipeline().addFirst("socks_decoder", new SocksCmdResponseDecoder)
+                ch.writeAndFlush(SOCKSConnect(new SocksCmdRequest(SocksCmdType.CONNECT, addrType, host, port), socksConnectPromise))
+              }
+          }
+      }
 
-        connectFuture.onComplete {
-          case Success(_) => if (!promise.trySuccess(ch)) ch.close()
-          case Failure(ex) => promise.tryFailure(ex)
-        }
+      socksConnectPromise.future.onComplete{
+        case Success(cmdResponse) => 
+          ch.pipeline().remove("socks_encoder")
+          Try{ ch.pipeline().remove("socks_decoder") }
+          
+          if (cmdResponse.cmdStatus() == SocksCmdStatus.SUCCESS) {
+            if (!promise.trySuccess(ch)) ch.close()             
+          } else {
+            promise.tryFailure(new Exception("SOCKS Proxy Failure: "+cmdResponse.cmdStatus.name))
+            ch.close()
+          }
+          
+        case Failure(ex) => promise.tryFailure(ex)
+      }
+      
+    } else {
+      connectFuture.onComplete {
+        case Success(_) => if (!promise.trySuccess(ch)) ch.close()
+        case Failure(ex) => promise.tryFailure(ex)
+      }
     }
     
     if (null != pool ) promise.future.map{ ch: Channel =>

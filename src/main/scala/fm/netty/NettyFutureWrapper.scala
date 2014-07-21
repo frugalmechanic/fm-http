@@ -20,8 +20,6 @@ import scala.concurrent.{CanAwait, ExecutionContext, Future}
 import scala.concurrent.duration.Duration
 import scala.util.{Failure, Success, Try}
 import io.netty.util.concurrent.{Future => NettyFuture, GenericFutureListener}
-import io.netty.util.concurrent.{Future => NettyFuture}
-import io.netty.util.concurrent.{Future => NettyFuture}
 
 object NettyFutureWrapper {
   private class Listener[T, U](func: Try[T] => U) extends GenericFutureListener[NettyFuture[T]] {

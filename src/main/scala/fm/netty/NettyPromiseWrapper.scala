@@ -15,7 +15,20 @@
  */
 package fm.netty
 
-trait PackageImplicits {
-  implicit def toNettyFutureWrapper[T](f: io.netty.util.concurrent.Future[T]): NettyFutureWrapper[T] = new NettyFutureWrapper(f)
-  implicit def toNettyPromiseWrapper[T](p: io.netty.util.concurrent.Promise[T]): NettyPromiseWrapper[T] = new NettyPromiseWrapper(p)
+import scala.concurrent.{Future, Promise}
+import scala.util.{Failure, Success, Try}
+import io.netty.util.concurrent.{Promise => NettyPromise}
+
+/**
+ * Wraps Netty's Promise as a Scala Promise
+ */
+final case class NettyPromiseWrapper[T](val p: NettyPromise[T]) extends Promise[T] {
+  def future: Future[T] = NettyFutureWrapper(p)
+  
+  def isCompleted: Boolean = p.isDone()
+  
+  def tryComplete(result: Try[T]): Boolean = result match {
+    case Success(value) => p.trySuccess(value)
+    case Failure(ex)    => p.tryFailure(ex) 
+  }
 }
