@@ -17,7 +17,7 @@ package fm.http.client
 
 import java.io.Closeable
 import java.util.{Deque, Queue}
-import java.util.concurrent.{ConcurrentHashMap, ConcurrentLinkedDeque, ConcurrentLinkedQueue}
+import java.util.concurrent.{ConcurrentHashMap, ConcurrentLinkedDeque, LinkedBlockingQueue}
 import java.util.concurrent.atomic.AtomicInteger
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
@@ -34,7 +34,7 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
   import ChannelPool.IdleChannel
   
   private[this] var count: Int = 0
-  private[this] val waitingQueue: Queue[Promise[Channel]] = new ConcurrentLinkedQueue()
+  private[this] val waitingQueue: Queue[Promise[Channel]] = new LinkedBlockingQueue(1024 /* TODO: make this configurable */)
   private[this] val idleChannels: Deque[IdleChannel] = new ConcurrentLinkedDeque()
 
   def closeIdleChannels(): Unit = {
@@ -82,7 +82,11 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
     } else {
       trace(s"checkout() - Queueing")
       val p: Promise[Channel] = Promise()
-      waitingQueue.add(p)
+      if (!waitingQueue.offer(p)) {
+        val msg = s"ChannelPool ($label) waitingQueue is full!"
+        logger.error(msg)
+        p.failure(new Exception(msg))
+      }
       p.future
     }
   }
