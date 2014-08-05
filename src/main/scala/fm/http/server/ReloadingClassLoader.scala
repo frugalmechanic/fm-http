@@ -107,11 +107,6 @@ final class ReloadingClassLoader(allowedPackages: Seq[String], parent: ClassLoad
   override def loadClass(name: String, resolve: Boolean): Class[_] = synchronized {
     //debug(s"loadClass($name, $resolve)")
     
-    if (name == "fm.catalog.website.CatalogSite") {
-      val res = parentFindLoadedClass(name)
-      require(null == res, "Parent has already loaded: "+name)
-    }
-    
     // If not allowed then just load from the parent
     if (!isAllowedClass(name)) {
       //debug(s"parentLoadClass($name)")
