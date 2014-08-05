@@ -59,6 +59,7 @@ final class ReloadingClassLoaderHolder(
     oldClassLoaders = oldClassLoaders :+ new WeakReference(cl)
   }
 
+  def modifiedClasses: Set[String] = classLoader.modifiedClasses
   def isModified: Boolean = classLoader.isModified
   
   override def clearAssertionStatus(): Unit = classLoader.clearAssertionStatus()

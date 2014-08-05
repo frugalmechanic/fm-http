@@ -1,5 +1,7 @@
 package fm.http.server
 
+import fm.common.Logging
+
 /**
  * A RequestRouter that wraps another RequestRouter which will reload
  * classes that change on the fly.
@@ -15,7 +17,7 @@ final case class ReloadingRequestRouter(
   parent: ClassLoader = classOf[ReloadingRequestRouter].getClassLoader,
   /** Show debugging output */
   debug: Boolean = false
-) extends RequestRouter {
+) extends RequestRouter with Logging {
   
   private[this] val reloadingClassLoader: ReloadingClassLoaderHolder = new ReloadingClassLoaderHolder(reloadablePackages, parent, debug)
   @volatile private[this] var _router: RequestRouter = newRequestRouter()
@@ -25,7 +27,11 @@ final case class ReloadingRequestRouter(
   
   /** Get the current RequestRouter */
   private def router: RequestRouter = synchronized {
-    if (reloadingClassLoader.isModified) {
+    val modifiedClasses: Set[String] = reloadingClassLoader.modifiedClasses
+    
+    if (modifiedClasses.nonEmpty) {
+      //logger.warn("Modified Classes: \n  "+modifiedClasses.mkString("\n  "))
+      
       _router.beforeShutdown()
       _router.afterShutdown()
       

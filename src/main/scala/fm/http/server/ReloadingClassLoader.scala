@@ -106,7 +106,7 @@ final class ReloadingClassLoader(allowedPackages: Seq[String], parent: ClassLoad
   
   override def loadClass(name: String, resolve: Boolean): Class[_] = synchronized {
     //debug(s"loadClass($name, $resolve)")
-    
+
     // If not allowed then just load from the parent
     if (!isAllowedClass(name)) {
       //debug(s"parentLoadClass($name)")
@@ -146,13 +146,21 @@ final class ReloadingClassLoader(allowedPackages: Seq[String], parent: ClassLoad
   /**
    * Have any of the classes that we've loaded been modified?
    */
-  def isModified: Boolean = {
+  def isModified: Boolean = modifiedClasses.nonEmpty
+  
+  /**
+   * Any classes that we've loaded that have been modified
+   * 
+   * Note: Needs to be synchronized so that it's not run
+   *       while we are in the middle of loading a class.
+   */
+  def modifiedClasses: Set[String] = synchronized {
     timestamps.asScala.filterNot{ case (name, timestamp) =>
       // Ignore classes that are valid but we haven't loaded
       timestamp == Long.MinValue
-    }.exists { case (name, timestamp) => 
+    }.filter { case (name, timestamp) => 
       lookupLastModified(name) != timestamp
-    }
+    }.map{ case (name, _) => name }.toSet
   }
   
   private def resourceNameForClass(name: String) = {
