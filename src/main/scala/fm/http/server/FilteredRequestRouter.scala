@@ -13,14 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package fm.http
+package fm.http.server
 
-import scala.concurrent.Future
-
-package object server extends fm.netty.PackageImplicits {
-  type RequestHandler = Request => Future[Response]
+final case class FilteredRequestRouter(router: RequestRouter, filter: RequestFilter) extends RequestRouter {
+  def lookup(request: Request): Option[RequestHandler] = router.lookup(request).map{ handler: RequestHandler => handler.withFilter(filter) }
   
-  final implicit class RichRequestHandler(val handler: RequestHandler) extends AnyVal {
-    def withFilter(filter: RequestFilter): RequestHandler = FilteredRequestHandler(handler, filter)
-  }
+  override def beforeStartup(): Unit = router.beforeStartup()
+  override def afterStartup(): Unit = router.afterStartup()
+  override def beforeShutdown(): Unit = router.beforeShutdown()
+  override def afterShutdown(): Unit = router.afterShutdown()
 }

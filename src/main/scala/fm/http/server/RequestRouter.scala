@@ -44,6 +44,11 @@ trait RequestRouter {
   def afterShutdown(): Unit = {}
   
   /**
+   * Run any RequestHandlers returned by this RequestRouter through a RequestFilter
+   */
+  final def withFilter(filter: RequestFilter): RequestRouter = FilteredRequestRouter(this, filter)
+  
+  /**
    * If this router doesn't match the request then try that router
    */
   final def orElse(that: RequestRouter): RequestRouter = OrElseRequestRouter(this, that)
