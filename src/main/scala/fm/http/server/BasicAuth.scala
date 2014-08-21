@@ -15,13 +15,13 @@
  */
 package fm.http.server
 
-import scala.concurrent.Future
-import scala.util.matching.Regex
-import io.netty.handler.codec.http.{HttpHeaders}
 import fm.common.{Base64, Logging}
 import fm.http.{Headers, Status}
+import io.netty.handler.codec.http.HttpHeaders
+import scala.concurrent.Future
+import scala.util.matching.Regex
 
-object BasicAuthFilter {
+object BasicAuth {
   private val BasicAuthHeader: Regex = """Basic (.+)""".r
   private val BasicAuthSplit: Regex = """(.+):(.+)""".r
 }
@@ -29,14 +29,14 @@ object BasicAuthFilter {
 /**
  * Performs Basic Authentication using the given Map of Username -> Plaintext Password before calling the passed in handler
  * 
- * Mostly used the Wikipedia pages as references:
+ * Mostly used the Wikipedia page as references:
  * http://en.wikipedia.org/wiki/Basic_access_authentication
  */
-final case class BasicAuthFilter(handler: RequestHandler, realm: String, users: Map[String, String]) extends RequestFilter with Logging {
-  import BasicAuthFilter._
+final case class BasicAuth(realm: String, users: Map[String, String]) extends Auth with Logging {
+  import BasicAuth._
   
-  def handle(request: Request, handler: RequestHandler): Future[Response] = {
-    if (isValid(request)) handler(request) else {
+  protected def requireAuthImpl(request: Request)(action: => Future[Response]): Future[Response] = {
+    if (isValid(request)) action else {
       Future.successful(Response(Status.UNAUTHORIZED, Headers(HttpHeaders.Names.WWW_AUTHENTICATE -> s"""Basic realm="$realm"""")))
     }
   }
