@@ -18,28 +18,30 @@ package fm.http
 import java.io.File
 
 object MimeTypes {
-  val GIF = "image/gif"
-  val JPEG = "image/jpeg"
-  val PNG = "image/png"
-  val JAVASCRIPT = "application/javascript"
-  val JSON = "application/json"
-  val CSS = "text/css"
-  val CSV = "text/csv"
-  val HTML = "text/html"
-  val PLAIN = "text/plain"
-  val XML = "application/xml"
-  val GZIP = "application/x-gzip"
-  val ZIP = "application/zip"
+  val GIF         = "image/gif"
+  val JPEG        = "image/jpeg"
+  val PNG         = "image/png"
+  val TIFF        = "image/tiff"
+  val JAVASCRIPT  = "application/javascript"
+  val JSON        = "application/json"
+  val CSS         = "text/css"
+  val CSV         = "text/csv"
+  val HTML        = "text/html"
+  val PLAIN       = "text/plain"
+  val XML         = "application/xml"
+  val GZIP        = "application/x-gzip"
+  val ZIP         = "application/zip"
   val X_COMPONENT = "text/x-component"
-  val RSS = "application/rss+xml"
-  val SVG = "image/svg+xml"
-  val BINARY = "application/octet-stream"
+  val RSS         = "application/rss+xml"
+  val SVG         = "image/svg+xml"
+  val BINARY      = "application/octet-stream"
 
   // type -> extensions
   val mimeTypeToExtension = Map[String,Seq[String]](
     GIF         -> "gif",
-    JPEG       -> Seq("jpg","jpeg"),
+    JPEG        -> Seq("jpg","jpeg"),
     PNG         -> "png",
+    TIFF        -> Seq("tif", "tiff"),
     JAVASCRIPT  -> "js",
     CSS         -> "css",
     CSV         -> "csv",
@@ -52,8 +54,9 @@ object MimeTypes {
     SVG         -> "svg"
   )
 
-  val compressable = Vector(HTML,JAVASCRIPT,JSON,CSS,CSV,PLAIN,XML,X_COMPONENT,RSS,SVG)
+  val compressable: Vector[String] = Vector(HTML,JAVASCRIPT,JSON,CSS,CSV,PLAIN,XML,X_COMPONENT,RSS,SVG)
 
+  // This is for the mimeTypeToExtension map
   private implicit def toSeq(s: String): Seq[String] = Seq(s)
 
   private val extensionToMimeType: Map[String, String] = {
@@ -66,17 +69,17 @@ object MimeTypes {
     builder.result
   }
 
-  def forFile(f: File): Option[String] = getExtension(f.getName).flatMap{forExtension}
-  def forPath(path: String): Option[String] = getExtension(path).flatMap{forExtension}
-  def forExtension(extension: String): Option[String] = extensionToMimeType.get(extension)
+  def forFile(f: File): Option[String] = getExtension(f.getName).flatMap{ forExtension }
+  def forPath(path: String): Option[String] = getExtension(path).flatMap{ forExtension }
+  def forExtension(extension: String): Option[String] = extensionToMimeType.get(extension.toLowerCase)
 
   def getExtension(name: String): Option[String] = {
-    val idx = name.lastIndexOf('.')
+    val idx: Int = name.lastIndexOf('.')
     if(-1 == idx) None else Some(name.substring(idx+1, name.length))
   }
 
   def isCompressable(contentType: String): Boolean = {
     if(null == contentType) return false
-    compressable.exists{contentType.startsWith}
+    compressable.exists{ contentType.startsWith }
   }
 }
