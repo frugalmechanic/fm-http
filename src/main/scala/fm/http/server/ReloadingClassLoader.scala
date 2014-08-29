@@ -1,5 +1,6 @@
 package fm.http.server
 
+import fm.common.IOUtils
 import java.io.{File, InputStream}
 import java.lang.reflect.Method
 import java.net.{URL, URLClassLoader, URLConnection}
@@ -82,7 +83,7 @@ final class ReloadingClassLoader(allowedPackages: Seq[String], parent: ClassLoad
     val length: Int = conn.getContentLength()
     val bytes: Array[Byte] = new Array(length)
     val is: InputStream = conn.getInputStream()
-    is.read(bytes, 0, length)
+    IOUtils.read(is, bytes, 0, length)
     is.close()
     
     ResourceInfo(name, lastModified, bytes)
