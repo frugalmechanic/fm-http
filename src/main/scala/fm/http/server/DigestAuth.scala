@@ -44,11 +44,16 @@ object DigestAuth {
    */
   def main(args: Array[String]): Unit = {
     CLIOptions.parse(args)
-    val realm: String = CLIOptions.realm.getOrElse{ throw new Exception("Missing realm") }
-    val user: String = CLIOptions.user.getOrElse{ throw new Exception("Missing user") }
 
-    println("Realm: "+realm)
-    println("User: "+user)
+    val realm: String = CLIOptions.realm.getOrElse {
+      print("Enter Realm: ")
+      System.console.readLine().trim()
+    }
+    
+    val user: String = CLIOptions.user.getOrElse {
+      print("Enter User: ")
+      System.console.readLine().trim()
+    }
 
     val pass: String = CLIOptions.pass.getOrElse {
       print("Enter Password: ")
@@ -62,6 +67,9 @@ object DigestAuth {
     }
 
     val hash: String = digestHash(realm=realm, username=user, password=pass)
+    
+    println("Realm: "+realm)
+    println("User: "+user)
     println("Digest Hash: "+hash)
   }
 }
