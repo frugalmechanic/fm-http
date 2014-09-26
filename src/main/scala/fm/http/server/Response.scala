@@ -35,7 +35,7 @@ object Response {
   def MovedPermanently(location: String): Response = plain(Status.MOVED_PERMANENTLY, location, Headers("Location" -> location))
   
   /** 302 */
-  def Found(location: String): Response = plain(Status.FOUND, "location", Headers("Location" -> location))
+  def Found(location: String): Response = plain(Status.FOUND, location, Headers("Location" -> location))
   
   /** 303 */
   def SeeOther(location: String): Response = plain(Status.SEE_OTHER, location, Headers("Location" -> location))
