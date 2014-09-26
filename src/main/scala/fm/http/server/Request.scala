@@ -93,10 +93,7 @@ final class Request (
   /**
    * The value of the Host header WITHOUT the port number
    */
-  val host: Option[String] = hostWithPort.map{ h: String =>
-    val idx: Int = h.indexOf(':')
-    if (idx != -1) h.substring(0, idx) else h
-  }
+  val host: Option[String] = headers.hostWithoutPort
 
   private def requireEmptyContent(): Unit = {
     content.foldLeft(false){ (isSet, buf) =>
