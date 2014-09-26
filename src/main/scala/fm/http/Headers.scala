@@ -15,13 +15,13 @@
  */
 package fm.http
 
-import scala.collection.SeqProxy
-import scala.collection.JavaConverters._
+import fm.common.Implicits._
+import fm.common.IndexedSeqProxy
 import java.util.Date
 import io.netty.handler.codec.http.{ClientCookieEncoder, DefaultHttpHeaders, HttpHeaders, ServerCookieEncoder}
 import org.joda.time.{DateTime, DateTimeZone}
 import org.joda.time.format.{DateTimeFormat, DateTimeFormatter}
-import fm.common.Implicits._
+import scala.collection.JavaConverters._
 import scala.util.Try
 
 object Headers {
@@ -45,7 +45,7 @@ object Headers {
     ImmutableHeaders(headers.nettyHeaders)
   }
   
-  private val RFC1123: DateTimeFormatter = DateTimeFormat.forPattern("EEE, dd MMM yyyy HH:mm:ss z")
+  private[this] val RFC1123: DateTimeFormatter = DateTimeFormat.forPattern("EEE, dd MMM yyyy HH:mm:ss z")
   private[http] def formatDate(): String = formatDate(DateTime.now)
   private[http] def formatDate(millis: Long): String = formatDate(new DateTime(millis))
   private[http] def formatDate(date: DateTime): String = date.withZone(DateTimeZone.UTC).toString(RFC1123)
@@ -76,7 +76,7 @@ object Headers {
   }
 }
 
-sealed trait Headers extends SeqProxy[(String, String)] {
+sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   import Headers._
   import HttpHeaders.{Names, Values}
   
@@ -99,10 +99,23 @@ sealed trait Headers extends SeqProxy[(String, String)] {
     h
   }
   
+  /** These are the client side cookies that are being sent with the request */
   def withCookies(c: Traversable[Cookie]): Headers
+  
+  /** These are the server side cookies that are being sent with the response */
   def withSetCookies(c: Traversable[Cookie]): Headers
   
-  override def toString: String = map{ case (k,v) => s"$k: $v" }.mkString("\n")
+  /** These are the client side cookies that are being sent with the request */
+  def addCookie(c: Cookie): Headers = {
+    withSetCookies(cookies.filterNot{ _.name == c.name } :+ c)
+  }
+  
+  /** These are the server side cookies that are being sent with the response */
+  def addSetCookie(c: Cookie): Headers = {
+    withSetCookies(setCookies.filterNot{ _.name == c.name } :+ c)
+  }
+  
+  override def toString: String = self.map{ case (k,v) => s"$k: $v" }.mkString("\n")
   
   def apply(name: String): String = get(name).getOrElse{ throw new NoSuchElementException("No header value for: "+name) }
   def get(name: String): Option[String] = Option(nettyHeaders.get(name))
@@ -112,7 +125,27 @@ sealed trait Headers extends SeqProxy[(String, String)] {
   def getDate(name: String): Option[DateTime] = get(name).flatMap{ parseDate }
   def getInt(name: String): Option[Int] = get(name).flatMap{ _.toIntOption }
   def getLong(name: String): Option[Long] = get(name).flatMap{ _.toLongOption }
-    
+  
+  /** A helper to find a client-sent cookie by name */
+  def getCookie(name: String): Option[Cookie] = cookies.find{ _.name == name }
+  
+  /**
+   * If the Host header has a port in it (e.g. frugalmechanic.com:8080) then
+   * this will strip it out.
+   */
+  def hostWithoutPort: Option[String] = host.map { h: String =>
+    val idx = h.indexOf(":")
+    if(-1 == idx) h else h.substring(0, idx)
+  }
+  
+  /**
+   * The port from the host header (e.g. frugalmechanic.com:8080)
+   */
+  def hostPort: Option[Int] = host.flatMap { h: String =>
+    val idx = h.indexOf(":")
+    if(-1 == idx) None else h.substring(idx + 1).toIntOption
+  }
+  
   def accept: Option[String] = get(Names.ACCEPT)
   def acceptCharset: Option[String] = get(Names.ACCEPT_CHARSET)
   def acceptEncoding: Option[String] = get(Names.ACCEPT_ENCODING)
@@ -141,8 +174,13 @@ sealed trait Headers extends SeqProxy[(String, String)] {
   def contentRange: Option[String] = get(Names.CONTENT_RANGE)
   def contentTransferEncoding: Option[String] = get(Names.CONTENT_TRANSFER_ENCODING)
   def contentType: Option[String] = get(Names.CONTENT_TYPE)
+  
+  /** This is the raw value of the client side cookies that are being sent with the request */
   def cookie: Option[String] = get(Names.COOKIE)
+  
+  /** These are the client side cookies that are being sent with the request */
   def cookies: Vector[Cookie] = cookie.map{ Cookie.tryParse }.getOrElse{ Vector.empty }
+  
   def date: Option[DateTime] = getDate(Names.DATE)
   def eTag: Option[String] = get(Names.ETAG)
   def expect: Option[String] = get(Names.EXPECT)
@@ -173,8 +211,13 @@ sealed trait Headers extends SeqProxy[(String, String)] {
   def secWebSocketProtocol: Option[String] = get(Names.SEC_WEBSOCKET_PROTOCOL)
   def secWebSocketVersion: Option[String] = get(Names.SEC_WEBSOCKET_VERSION)
   def server: Option[String] = get(Names.SERVER)
+  
+  /** This is the raw value of the server side cookies that are being sent with the response */
   def setCookie: Vector[String] = getAll(Names.SET_COOKIE)
+  
+  /** These are the server side cookies that are being sent with the response */
   def setCookies: Vector[Cookie] = setCookie.flatMap{ Cookie.tryParse }
+
   def setCookie2: Vector[String] = getAll(Names.SET_COOKIE2)
   def te: Option[String] = get(Names.TE)
   def trailer: Option[String] = get(Names.TRAILER)
