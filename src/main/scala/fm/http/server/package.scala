@@ -22,5 +22,8 @@ package object server extends fm.netty.PackageImplicits {
   
   final implicit class RichRequestHandler(val handler: RequestHandler) extends AnyVal {
     def withFilter(filter: RequestFilter): RequestHandler = FilteredRequestHandler(handler, filter)
+    def withFilter(filter: Option[RequestFilter]): RequestHandler = if (filter.isDefined) withFilter(filter.get) else handler
+    
+    def withFilters(filters: TraversableOnce[RequestFilter]): RequestHandler = filters.foldRight(handler){ (filter, newHandler) => newHandler.withFilter(filter) }
   }
 }

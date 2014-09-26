@@ -49,6 +49,16 @@ trait RequestRouter {
   final def withFilter(filter: RequestFilter): RequestRouter = FilteredRequestRouter(this, filter)
   
   /**
+   * Run any RequestHandlers returned by this RequestRouter through an optional RequestFilter
+   */
+  final def withFilter(filter: Option[RequestFilter]): RequestRouter = if (filter.isDefined) withFilter(filter.get) else this
+    
+  /**
+   * Run any RequestHandlers returned by this RequestRouter through a sequence of RequestFilter
+   */
+  final def withFilters(filters: TraversableOnce[RequestFilter]): RequestRouter = filters.foldRight(this){ (filter, router) => router.withFilter(filter) }
+  
+  /**
    * If this router doesn't match the request then try that router
    */
   final def orElse(that: RequestRouter): RequestRouter = OrElseRequestRouter(this, that)
