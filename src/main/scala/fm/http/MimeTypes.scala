@@ -15,13 +15,16 @@
  */
 package fm.http
 
+import fm.common.Implicits._
 import java.io.File
 
 object MimeTypes {
+  // Images
   val GIF         = "image/gif"
   val JPEG        = "image/jpeg"
   val PNG         = "image/png"
   val TIFF        = "image/tiff"
+  // Text
   val JAVASCRIPT  = "application/javascript"
   val JSON        = "application/json"
   val CSS         = "text/css"
@@ -29,30 +32,36 @@ object MimeTypes {
   val HTML        = "text/html"
   val PLAIN       = "text/plain"
   val XML         = "application/xml"
+  // Other
   val GZIP        = "application/x-gzip"
   val ZIP         = "application/zip"
   val X_COMPONENT = "text/x-component"
   val RSS         = "application/rss+xml"
   val SVG         = "image/svg+xml"
+  val PDF         = "application/pdf"
   val BINARY      = "application/octet-stream"
 
   // type -> extensions
-  val mimeTypeToExtension = Map[String,Seq[String]](
+  val mimeTypeToExtension = Vector[(String,Seq[String])](
+    // Images
     GIF         -> "gif",
     JPEG        -> Seq("jpg","jpeg"),
     PNG         -> "png",
     TIFF        -> Seq("tif", "tiff"),
+    // Text
     JAVASCRIPT  -> "js",
     CSS         -> "css",
     CSV         -> "csv",
     HTML        -> Seq("html","htm"),
     PLAIN       -> Seq("txt","tsv"),
     XML         -> "xml",
+    // Other
     GZIP        -> "gz",
     ZIP         -> "zip",
     X_COMPONENT -> "htc",
-    SVG         -> "svg"
-  )
+    SVG         -> "svg",
+    PDF         -> "pdf"
+  ).toUniqueHashMap
 
   val compressable: Vector[String] = Vector(HTML,JAVASCRIPT,JSON,CSS,CSV,PLAIN,XML,X_COMPONENT,RSS,SVG)
 
@@ -60,13 +69,13 @@ object MimeTypes {
   private implicit def toSeq(s: String): Seq[String] = Seq(s)
 
   private val extensionToMimeType: Map[String, String] = {
-    val builder = Map.newBuilder[String,String]
+    val builder = Vector.newBuilder[(String,String)]
 
     mimeTypeToExtension.foreach{ case (key,values) =>
       values.foreach{v => builder += v -> key }
     }
 
-    builder.result
+    builder.result.toUniqueHashMap
   }
 
   def forFile(f: File): Option[String] = getExtension(f.getName).flatMap{ forExtension }
