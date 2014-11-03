@@ -31,8 +31,14 @@ trait StaticFileHandlerBase extends RequestRouter {
   
   protected def root: File
   
+  /** Is this a valid file we can serve? */
   protected def isValidFile(f: File): Boolean
 
+  /**
+   * Is this a valid directory that we should check for an index file?
+   * 
+   * Note: If you don't want to use index files then this can just return false for everything.
+   */
   protected def isValidDir(f: File): Boolean
   
   protected def handleNormal(request: Request, f: File, expirationSeconds: Int): Option[RequestHandler]

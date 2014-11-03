@@ -34,10 +34,12 @@ object StaticFileHandler {
   
   def formattedTimestamp(f: File): String = new LocalDateTime(f.lastModified()).toString(timestampFormat)
 
-  def apply(root: String): StaticFileHandler = StaticFileHandler(new File(root))
+  def apply(root: String): StaticFileHandler = apply(root, false)
+  
+  def apply(root: String, devMode: Boolean): StaticFileHandler = StaticFileHandler(new File(root), devMode)
 }
 
-final case class StaticFileHandler(root: File) extends StaticFileHandlerBase {
+final case class StaticFileHandler(root: File, devMode: Boolean) extends StaticFileHandlerBase {
   protected def isValidFile(f: File): Boolean = isFileSystemFile(f)
   
   protected def isValidDir(f: File): Boolean = isFileSystemDir(f)

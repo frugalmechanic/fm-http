@@ -24,10 +24,14 @@ import org.joda.time.{DateTime, LocalDateTime}
 import scala.collection.JavaConverters._
 
 object StaticClasspathFileHandler {
-  def apply(root: String): StaticClasspathFileHandler = apply(new File(root), defaultClassLoader)
-  def apply(root: String, classLoader: ClassLoader): StaticClasspathFileHandler = apply(new File(root), classLoader)
+  def apply(root: String): StaticClasspathFileHandler = apply(new File(root), false, defaultClassLoader)
+  def apply(root: String, classLoader: ClassLoader): StaticClasspathFileHandler = apply(new File(root), false, classLoader)
   
-  def apply(root: File): StaticClasspathFileHandler = apply(root, defaultClassLoader)
+  def apply(root: File): StaticClasspathFileHandler = apply(root, false, defaultClassLoader)
+  
+  def apply(root: String, devMode: Boolean): StaticClasspathFileHandler = apply(new File(root), devMode, defaultClassLoader)
+  def apply(root: String, devMode: Boolean, classLoader: ClassLoader): StaticClasspathFileHandler = apply(new File(root), devMode, classLoader)
+  def apply(root: File, devMode: Boolean): StaticClasspathFileHandler = apply(root, devMode, defaultClassLoader)
   
   private def defaultClassLoader: ClassLoader = {
     val cl: ClassLoader = Thread.currentThread().getContextClassLoader()
@@ -35,7 +39,7 @@ object StaticClasspathFileHandler {
   }
 }
 
-final case class StaticClasspathFileHandler(root: File, classLoader: ClassLoader) extends StaticFileHandlerBase with Logging {
+final case class StaticClasspathFileHandler(root: File, devMode: Boolean, classLoader: ClassLoader) extends StaticFileHandlerBase with Logging {
   
   private def getClasspathResource(f: File): Option[URL] = {
     if (null == f) return None
