@@ -40,10 +40,10 @@ object RouteMatchers {
      * TODO: make this work with query params.  e.g.:  /path/$var?foo=$foo
      */
     def simple = RichPathMatchingRegex(makeSimpleRegex(sc))
-    def p = RichPathMatchingRegex(makeSimpleRegex(sc))
+    def p      = RichPathMatchingRegex(makeSimpleRegex(sc))
     
     /**
-     * This support full regex Patterns with named capturing groups that can be used with Scala String Interpolation
+     * This supports full regex Patterns with named capturing groups that can be used with Scala String Interpolation
      * 
      * e.g.:
      * 

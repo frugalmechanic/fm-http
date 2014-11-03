@@ -9,13 +9,13 @@ import fm.common.Logging
  * For best results limit the scope of the reloadablePackages.
  */
 final case class ReloadingRequestRouter(
-  /** The fully qualified className of the RequestRouter that this ReloadingRequestRouter wraps */
+  /* The fully qualified className of the RequestRouter that this ReloadingRequestRouter wraps */
   className: String,
-  /** Java/Scala Package Prefixes that are allowed to be reloaded */
+  /* Java/Scala Package Prefixes that are allowed to be reloaded */
   reloadablePackages: Seq[String],
-  /** The parent ClassLoader to use */
+  /* The parent ClassLoader to use */
   parent: ClassLoader = classOf[ReloadingRequestRouter].getClassLoader,
-  /** Show debugging output */
+  /* Show debugging output */
   debug: Boolean = false
 ) extends RequestRouter with Logging {
   
