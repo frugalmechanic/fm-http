@@ -18,14 +18,19 @@ package fm.http.client
 import io.netty.buffer.ByteBuf
 import io.netty.handler.codec.http.{HttpHeaders, HttpResponse, HttpResponseStatus, HttpVersion}
 import io.netty.handler.codec.http.multipart.{HttpPostRequestDecoder, InterfaceHttpData}
+import io.netty.util.CharsetUtil
 import java.io.Closeable
+import java.nio.charset.Charset
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import fm.common.Logging
+import fm.common.Implicits._
 import fm.http._
 
 object Response {
   def apply(response: HttpResponse, content: LinkedHttpContentReader)(implicit execution: ExecutionContext): AsyncResponse = new AsyncResponse(response, content)
+
+  val CharsetRegex = """(?i)^\s*?.*?\s*?charset\s*?=\s*?(.*?)$""".r
 }
 
 sealed abstract class Response(response: HttpResponse) extends Closeable {
@@ -48,6 +53,18 @@ sealed abstract class Response(response: HttpResponse) extends Closeable {
   override def toString: String = {
     s"${version.text} ${status.code} ${status.msg}\n\n$headers"
   }
+
+  protected def detectCharset(): Charset = {
+    import Response.CharsetRegex
+
+    response.headers().get("Content-Type").toBlankOption.flatMap { contentType: String =>
+      val charset: Option[String] = for (CharsetRegex(group) <- CharsetRegex.findFirstIn(contentType)) yield group
+
+      charset.collect { case charsetName: String if Charset.isSupported(charsetName) =>
+        Charset.forName(charsetName) // Set current charset to that
+      }
+    }
+  }.getOrElse(CharsetUtil.ISO_8859_1) // Default charset for detection is latin-1 (http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.7.1)
 }
 
 /**
@@ -98,11 +115,11 @@ final class AsyncResponse (response: HttpResponse, content: LinkedHttpContentRea
 
   def toFullResponse(maxLength: Long = Long.MaxValue): Future[FullResponse] = body match {
     case None         => Future.successful(new FullResponse(response, ""))
-    case Some(reader) => reader.readToString(maxLength).map{ new FullResponse(response, _) }
+    case Some(reader) => reader.readToString(maxLength, detectCharset()).map{ new FullResponse(response, _) }
   }
-  
+
   def readBodyToString(maxLength: Long = Long.MaxValue): Future[String] = {
-    val f = body.map{ _.readToString(maxLength) }.getOrElse{ Future.successful("") }
+    val f = body.map{ _.readToString(maxLength, detectCharset()) }.getOrElse{ Future.successful("") }
     f.onComplete{ case _ => close() }
     f
   }

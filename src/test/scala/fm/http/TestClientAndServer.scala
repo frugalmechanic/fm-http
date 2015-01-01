@@ -43,11 +43,19 @@ object TestClientAndServer {
   private def router = RequestRouter(handler)
   
   private val OneMB: Long = 1048576
-  
+
+  private val UTF8Header: Headers   = Headers(("Content-Type", "text/html; charset=utf-8"))
+  private val Latin1Header: Headers = Headers(("Content-Type", "text/html; charset=ISO-8859-1"))
+
   protected val unwrappedHandler: PartialFunction[Request, Response] = {
     case GET(simple"/${INT(code)}") => Response(Status(code), Status(code).msg)
     case GET("/data_one_mb")        => Response.Ok(makeLinkedHttpContent(OneMB))
     case GET("/data_hundred_mb")    => Response.Ok(makeLinkedHttpContent(OneMB * 100))
+
+    case GET("/utf-8")                   => Response.Ok(UTF8Header, Unpooled.copiedBuffer("£", CharsetUtil.UTF_8))
+    case GET("/latin1")                  => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", CharsetUtil.ISO_8859_1))
+    case GET("/default-latin1")          => Response.Ok(Headers.empty, Unpooled.copiedBuffer("£", CharsetUtil.ISO_8859_1))
+    case GET("/latin1-header-utf8-data") => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", CharsetUtil.UTF_8))
   }
   
   // This just cycles through all the ASCII printable chars starting at the space ' ' (20) and ending with '~' (126)
@@ -207,4 +215,31 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
 //      res should equal (true)
 //    }
 //  }
+
+  /*
+  Certain characters like £ are two bytes in UTF-8 and one byte in Latin1
+  Test support for reading explicit latin1/utf-8/etc response bodies
+
+  scala> "£".getBytes("UTF-8").map { _ & 0xFF }
+  res10: Array[Int] = Array(194, 163)
+
+  scala> "£".getBytes("latin1").map { _ & 0xFF }
+  res11: Array[Int] = Array(163)
+   */
+
+  test("Content-Type: UTF-8") {
+    getSync("/utf-8", 200, "£")
+  }
+
+  test("Content-Type: latin1") {
+    getSync("/latin1", 200, "£")
+  }
+
+  test("Content-Type: default latin1") {
+    getSync("/default-latin1", 200, "£")
+  }
+
+  test("Content-Type: latin1 & UTF-8 Data") {
+    getSync("/latin1-header-utf8-data", 200, "Â£") // new String("£".getBytes("UTF-8"), "latin1"))
+  }
 }

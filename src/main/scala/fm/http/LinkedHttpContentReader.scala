@@ -22,6 +22,7 @@ import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http.{DefaultFullHttpResponse, FullHttpResponse, HttpResponseStatus, HttpVersion}
 import io.netty.util.CharsetUtil
 import java.io.{Closeable, File, FileOutputStream}
+import java.nio.charset.Charset
 import java.util.concurrent.atomic.AtomicBoolean
 import fm.common.Implicits._
 
@@ -57,9 +58,9 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   /**
    * Read the response body into a string
    */
-  def readToString(maxLength: Long = Long.MaxValue): Future[String] = {
-    foldLeft(new StringBuilder){ (sb, buf) =>
-      sb.append(buf.toString(CharsetUtil.UTF_8))
+  def readToString(maxLength: Long = Long.MaxValue, encoding: Charset = CharsetUtil.ISO_8859_1): Future[String] = {
+    foldLeft(new StringBuilder){ (sb: StringBuilder, buf: ByteBuf) =>
+      sb.append(buf.toString(encoding))
       require(sb.length <= maxLength, s"Body exceeds maxLength.  Body Length (so far): ${sb.length}  Specified Max Length: $maxLength")
       sb
     }.map{ _.toString }
