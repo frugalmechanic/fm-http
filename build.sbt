@@ -2,19 +2,19 @@ FMPublic
 
 name := "fm-http"
 
-version := "0.2.0-SNAPSHOT"
+version := "0.2.0"
 
 description := "Async Http Client & Server for Scala"
 
-scalaVersion := "2.11.2"
+scalaVersion := "2.11.5"
 
-crossScalaVersions := Seq("2.10.4", "2.11.2")
+crossScalaVersions := Seq("2.10.4", "2.11.5")
 
 scalacOptions := Seq("-unchecked", "-deprecation", "-language:implicitConversions", "-feature", "-Xlint", "-optimise")
 
 libraryDependencies ++= Seq(
   "com.frugalmechanic" %% "scala-optparse" % "1.1.1",
-  "com.frugalmechanic" %% "fm-common" % "0.2.0-SNAPSHOT",
+  "com.frugalmechanic" %% "fm-common" % "0.2.0",
   "com.frugalmechanic" %% "fm-lazyseq" % "0.1" % "test"
 )
 
