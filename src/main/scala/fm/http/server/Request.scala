@@ -41,8 +41,7 @@ object Request {
 }
 
 final class Request (
-  /** The Remote IP making the request (possibly extracted from FM-Remote-IP or X-Forwarded-For) */
-  val remoteIp: IP,
+  val remoteIp: IP, // The Remote IP making the request (possibly extracted from FM-Remote-IP or X-Forwarded-For)
   request: HttpRequest,
   content: LinkedHttpContentReader
 )(implicit execution: ExecutionContext) extends Logging with Closeable {
@@ -113,7 +112,7 @@ final class Request (
    * The contents of the POST/PUT/PATCH body.  Only access this value if you want to initiate receiving the data
    */
   lazy val postBody: Future[PostBody] = postDecoder match {
-    case Some(decoder) => content.foldLeft(decoder){ (decoder, buf) => decoder.offer(new DefaultHttpContent(buf)) }.map{ _.offer(LastHttpContent.EMPTY_LAST_CONTENT) }.map{ decoder => PostBody.fromNetty(decoder.getBodyHttpDatas().asScala.toVector) }
+    case Some(decoder) => content.foldLeft(decoder){ (decoder, buf) => decoder.offer(new DefaultHttpContent(buf)); decoder }.map{ _.offer(LastHttpContent.EMPTY_LAST_CONTENT) }.map{ decoder => PostBody.fromNetty(decoder.getBodyHttpDatas().asScala.toVector) }
     case None => Future.successful(PostBody.empty)
   }
   
