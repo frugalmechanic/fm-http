@@ -78,7 +78,7 @@ final case class LinkedHttpContentBuilder() extends Closeable {
     this
   }
   
-  def +=(next: ByteBuf): this.type = +=(Some(next))
+  def +=(next: ByteBuf): this.type = +=(Option(next))
   
   def +=(next: Option[ByteBuf]): this.type = synchronized {
     // done() can be called multiple times
@@ -112,6 +112,7 @@ final case class LinkedHttpContentBuilder() extends Closeable {
     
     nextChunk.failure(cause)
     nextChunk = null
+    done = true
     this
   }
 }
