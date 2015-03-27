@@ -17,6 +17,7 @@ package fm.http.server
 
 import com.frugalmechanic.optparse.OptParse
 import fm.common.{DigestUtils, Logging, Crypto, StacklessException}
+import fm.common.Implicits._
 import fm.http.{Headers, Status}
 import io.netty.handler.codec.http.HttpHeaders
 import java.security.SecureRandom
@@ -155,7 +156,7 @@ final case class DigestAuth(
             val v: String = if (null != m.group(2)) m.group(2) else m.group(3)
             (k,v)
           }.toSeq: _*)
-          
+       
        if (logger.isDebugEnabled) logger.debug(s"Request: ${request.method} ${request.uri}  Params: $params")
        
        isValid(request, params)
@@ -176,7 +177,7 @@ final case class DigestAuth(
     val pQop = params.getOrElse("qop", "")
     
     def computeResponse(ha1: String): String = {
-      val ha2: String = DigestUtils.md5Hex(request.method.name+":"+request.uri)
+      val ha2: String = DigestUtils.md5Hex(request.method.name+":"+pUri)
   
       pQop match {
         case "auth" => DigestUtils.md5Hex(ha1+":"+pNonce+":"+pCount+":"+pClientNonce+":auth:"+ha2)
@@ -186,7 +187,8 @@ final case class DigestAuth(
     }
     
     // Some basic checks to ignore any obviously invalid requests
-    if (!users.contains(pUsername) || realm != pRealm || pUri != request.uri) return false
+    // Note - the stripTrailing("?") exists because Netty seems to convert /foo? to /foo in HttpRequest
+    if (!users.contains(pUsername) || realm != pRealm || pUri.stripTrailing("?") != request.uri.stripTrailing("?")) return false
     
     // Verify the opaque value was encrypted/signed by us
     val opaqueMsg: String = DigestOpaqueCrypto.tryDecryptBase64String(pOpaque).getOrElse{ return false }
