@@ -15,15 +15,14 @@
  */
 package fm.http.server
 
+import fm.common.{IP, Logging, QueryParams}
+import fm.http._
+import java.io.Closeable
 import io.netty.handler.codec.http.{HttpHeaders, HttpMethod, HttpVersion}
 import io.netty.handler.codec.http.{DefaultHttpContent, DefaultHttpRequest, HttpRequest, LastHttpContent}
 import io.netty.handler.codec.http.multipart.{HttpPostRequestDecoder, InterfaceHttpData}
-import java.io.Closeable
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future, Promise}
-import fm.http._
-import fm.common.QueryParams
-import fm.common.{IP, Logging}
 
 object Request {
   def apply(remoteIp: IP, request: HttpRequest, content: LinkedHttpContentReader)(implicit execution: ExecutionContext): Request = new Request(remoteIp, request, content)

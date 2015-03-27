@@ -157,7 +157,8 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     val r: Request = Request(remoteIp, request, contentReader)
     
     val future: Future[Response] = router.lookup(r) match {
-      case Some(handler) => try {
+      case Some(handler) => 
+        try {
           handler(r)
         } catch {
           case ex: Exception =>
