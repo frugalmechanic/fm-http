@@ -109,7 +109,7 @@ abstract class HttpServerApp extends Logging {
     // Figure out which port we should listen on    
     val (usedPorts, availPorts) = ports.partition{ alive }
     
-    if(availPorts.isEmpty) { logger.error("All Ports in use"); sys.exit(-1) }
+    if (availPorts.isEmpty) { logger.error("All Ports in use"); sys.exit(-1) }
     
     val port: Int = availPorts.head
     logger.info("Using Port: "+port)
@@ -190,7 +190,7 @@ abstract class HttpServerApp extends Logging {
     )
     
     val clazz: String = getClass.getName
-    val APP: String = if(clazz.endsWith("$")) clazz.substring(0, clazz.length-1) else clazz
+    val APP: String = if (clazz.endsWith("$")) clazz.substring(0, clazz.length-1) else clazz
     val CLASSPATH: String = System.getProperty("java.class.path")
     
     val args = Vector.newBuilder[String]
@@ -199,7 +199,7 @@ abstract class HttpServerApp extends Logging {
     
     // Java Options
     args ++= JAVA_OPTS
-    if(includeClasspath) args ++= Seq("-classpath", CLASSPATH)
+    if (includeClasspath) args ++= Seq("-classpath", CLASSPATH)
     
     // The class we are running
     args += APP
@@ -221,12 +221,12 @@ abstract class HttpServerApp extends Logging {
       // Wait up to 90 seconds for the servers to stop responding
       for(i <- 1 to 90) {
         waitingForPorts = waitingForPorts.filter{alive}
-        if(waitingForPorts.isEmpty) break
+        if (waitingForPorts.isEmpty) break
         Thread.sleep(1000)
       }
     }
 
-    if(waitingForPorts.isEmpty) {
+    if (waitingForPorts.isEmpty) {
       logger.info("All used ports shut down.")
     } else {
       logger.error("WARNING: The following servers did not shut down: "+waitingForPorts)
@@ -263,7 +263,7 @@ abstract class HttpServerApp extends Logging {
     val emailAppender: SMTPAppender = ctx.getLogger("__EMAIL__").getAppender("EMAIL").asInstanceOf[SMTPAppender]
 
     assert(null != emailAppender, "Email Appender is null!")
-    if(null != emailAppender) {
+    if (null != emailAppender) {
       if (EmailUser.isNotBlank) emailAppender.setUsername(EmailUser)
       if (EmailPass.isNotBlank) emailAppender.setPassword(EmailPass)
       emailAppender.start() // start() has to be called for it to pick up the new username/password
@@ -301,7 +301,7 @@ abstract class HttpServerApp extends Logging {
     def write(b: Int): Unit = write(Array(b.toByte))
 
     override def write(bytes: Array[Byte], off: Int, len: Int): Unit = {
-      if(logger.isInfoEnabled) logger.info(new String(bytes, off, len, "UTF-8"))
+      if (logger.isInfoEnabled) logger.info(new String(bytes, off, len, "UTF-8"))
     }
     
   }
