@@ -132,7 +132,7 @@ final case class DigestAuth(
     val nonce: String = DigestUtils.md5Hex(DigestNoncePrefix+System.currentTimeMillis.toString+secureRandom.nextLong.toString)
     val opaque: String = DigestOpaqueCrypto.encryptBase64String(System.currentTimeMillis+":"+nonce)
 
-    val stale: Seq[(String,String)] = if(isStale) Seq("stale" -> "true") else Seq()
+    val stale: Seq[(String,String)] = if (isStale) Seq("stale" -> "true") else Seq()
 
     val params: Seq[(String,String)] = Seq(
       "realm" -> realm,
@@ -152,11 +152,12 @@ final case class DigestAuth(
       case DigestAuthHeader(paramsStr) =>
         val params: Map[String, String] = Map(DigestAuthParam.findAllIn(paramsStr).matchData.map{ m => 
             val k: String = m.group(1)
-            val v: String = if(null != m.group(2)) m.group(2) else m.group(3)
+            val v: String = if (null != m.group(2)) m.group(2) else m.group(3)
             (k,v)
           }.toSeq: _*)
           
-       if (logger.isDebugEnabled) logger.debug("Params: "+params)
+       if (logger.isDebugEnabled) logger.debug(s"Request: ${request.method} ${request.uri}  Params: $params")
+       
        isValid(request, params)
        
       case _ => false
@@ -180,7 +181,7 @@ final case class DigestAuth(
       pQop match {
         case "auth" => DigestUtils.md5Hex(ha1+":"+pNonce+":"+pCount+":"+pClientNonce+":auth:"+ha2)
         case ""     => DigestUtils.md5Hex(ha1+":"+pNonce+":"+ha2)
-        case _      =>  ""
+        case _      => ""
       }
     }
     
@@ -207,7 +208,7 @@ final case class DigestAuth(
 
     val res: Boolean = pResponse == computeResponse(ha1Precomputed) || pResponse == computeResponse(ha1Plaintext)
 
-    if(!res && logger.isDebugEnabled) logger.debug("Response mismatch - Expected: "+computeResponse(ha1Precomputed)+" OR "+computeResponse(ha1Plaintext)+"  Got: "+pResponse)
+    if (!res && logger.isDebugEnabled) logger.debug("Response mismatch - Expected: "+computeResponse(ha1Precomputed)+" OR "+computeResponse(ha1Plaintext)+"  Got: "+pResponse)
     
     res
   }
