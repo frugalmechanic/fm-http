@@ -48,6 +48,9 @@ object Response {
   def apply(status: Status, headers: Headers, body: String): Response = plain(status, body, headers)
   def apply(status: Status): Response = apply(status, Headers.empty)
   def apply(status: Status, headers: Headers): Response = FullResponse(status, headers, Unpooled.EMPTY_BUFFER)
+  def apply(status: Status, headers: Headers, arr: Array[Byte]): Response = FullResponse(status, headers, Unpooled.copiedBuffer(arr))
+  def apply(status: Status, headers: Headers, arr: Array[Byte], offset: Int, length: Int): Response = FullResponse(status, headers, Unpooled.copiedBuffer(arr, offset, length))
+  def apply(status: Status, headers: Headers, buf: ByteBuf): Response = FullResponse(status, headers, buf)
   
   def plain(status: Status): Response = plain(status, Headers.empty)
   def plain(status: Status, headers: Headers): Response = plain(status, s"${status.code} ${status.msg}", headers)
