@@ -16,13 +16,15 @@
 package fm.http
 
 import fm.common.Implicits._
-import fm.common.IndexedSeqProxy
+import fm.common.{Base64, IndexedSeqProxy}
+import java.nio.charset.StandardCharsets
 import java.util.Date
 import io.netty.handler.codec.http.{ClientCookieEncoder, DefaultHttpHeaders, HttpHeaders, ServerCookieEncoder}
 import org.joda.time.{DateTime, DateTimeZone}
 import org.joda.time.format.{DateTimeFormat, DateTimeFormatter}
 import scala.collection.JavaConverters._
 import scala.util.Try
+import scala.util.matching.Regex
 
 object Headers {
   val empty: Headers = ImmutableHeaders(HttpHeaders.EMPTY_HEADERS)
@@ -74,6 +76,52 @@ object Headers {
     val X_POWERED_BY: String = "X-Powered-By"
     val X_UA_COMPATIBLE: String = "X-UA-Compatible"
   }
+  
+  private val BasicAuthHeader: Regex = """Basic (.+)""".r
+  private val BasicAuthSplit: Regex = """(.+):(.+)""".r
+  
+  private val DigestAuthHeader: Regex = """Digest (.+)""".r
+  private val DigestAuthParam: Regex = """(\w+)=(?:"([^"]+)"|([^,]+)),?""".r
+  
+  /**
+   * Given the value of the Authorization header parse the username/password for Basic auth
+   */
+  def parseBasicAuthorization(value: String): Option[(String,String)] = {
+    value match {
+      case BasicAuthHeader(encoded) => new String(Base64.decode(encoded), StandardCharsets.ISO_8859_1) match {
+        case BasicAuthSplit(user, pass) => Some((user, pass))
+        case _ => None
+      }
+      case _ => None
+    }
+  }
+  
+  def makeBasicAuthorization(user: String, pass: String): String = Base64.encodeBytes((user+":"+pass).getBytes(StandardCharsets.ISO_8859_1))
+  
+  /**
+   * Given the value of the WWW-Authenticate or Authorization headers parse the Digest auth params
+   */
+  private def parseDigestAuthParams(str: String): Option[Map[String,String]] = {
+    str match {
+      case DigestAuthHeader(paramsStr) =>
+        val params: Map[String, String] = Map(DigestAuthParam.findAllIn(paramsStr).matchData.map{ m => 
+            val k: String = m.group(1)
+            val v: String = if (null != m.group(2)) m.group(2) else m.group(3)
+            (k,v)
+          }.toSeq: _*)
+       
+       Some(params)
+       
+      case _ => None
+    }
+  }
+  
+  /**
+   * Create the WWW-Authenticate or Authorization header value given the Digest auth params
+   */
+  def makeDigestAuthorization(params: Seq[(String,String)]): String = {
+    "Digest "+params.map{case (k,v) => k+"=\""+v+"\""}.mkString(", ")
+  }
 }
 
 sealed trait Headers extends IndexedSeqProxy[(String, String)] {
@@ -107,12 +155,12 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   
   /** These are the client side cookies that are being sent with the request */
   def addCookie(c: Cookie): Headers = {
-    withSetCookies(cookies.filterNot{ _.name == c.name } :+ c)
+    withSetCookies(cookies.filterNot{ _.name === c.name } :+ c)
   }
   
   /** These are the server side cookies that are being sent with the response */
   def addSetCookie(c: Cookie): Headers = {
-    withSetCookies(setCookies.filterNot{ _.name == c.name } :+ c)
+    withSetCookies(setCookies.filterNot{ _.name === c.name } :+ c)
   }
   
   override def toString: String = self.map{ case (k,v) => s"$k: $v" }.mkString("\n")
@@ -127,7 +175,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   def getLong(name: String): Option[Long] = get(name).flatMap{ _.toLongOption }
   
   /** A helper to find a client-sent cookie by name */
-  def getCookie(name: String): Option[Cookie] = cookies.find{ _.name == name }
+  def getCookie(name: String): Option[Cookie] = cookies.find{ _.name === name }
   
   /**
    * If the Host header has a port in it (e.g. frugalmechanic.com:8080) then
@@ -135,7 +183,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
    */
   def hostWithoutPort: Option[String] = host.map { h: String =>
     val idx = h.indexOf(":")
-    if(-1 == idx) h else h.substring(0, idx)
+    if(-1 === idx) h else h.substring(0, idx)
   }
   
   /**
@@ -143,7 +191,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
    */
   def hostPort: Option[Int] = host.flatMap { h: String =>
     val idx = h.indexOf(":")
-    if(-1 == idx) None else h.substring(idx + 1).toIntOption
+    if(-1 === idx) None else h.substring(idx + 1).toIntOption
   }
   
   def accept: Option[String] = get(Names.ACCEPT)
@@ -244,6 +292,39 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   def xContentTypeOptions: Option[String] = get(NonStandardNames.X_CONTENT_TYPE_OPTIONS)
   def xPoweredBy: Option[String] = get(NonStandardNames.X_POWERED_BY)
   def xUACompatible: Option[String] = get(NonStandardNames.X_UA_COMPATIBLE)
+  
+  //
+  // Basic Auth helpers
+  //
+  
+  /**
+   * The Basic Auth username and password from the Authorization header
+   */
+  def basicAuthUserAndPass: Option[(String,String)] = authorization.flatMap{ Headers.parseBasicAuthorization }
+  
+  /** The Basic Auth username from the Authorization header */
+  def basicAuthUser: Option[String] = basicAuthUserAndPass.map{ _._1 }
+  
+  /** The Basic Auth password from the Authorization header */
+  def basicAuthPass: Option[String] = basicAuthUserAndPass.map{ _._2 }
+  
+  //
+  // Digest Auth Helpers
+  //
+  
+  def digestAuthParams: Option[Map[String,String]] = digestAuthParamsWWWAuthenticate orElse digestAuthParamsAuthorization
+  
+  def digestAuthParamsWWWAuthenticate: Option[Map[String,String]] = wwwAuthenticate.flatMap{ Headers.parseDigestAuthParams }
+  def digestAuthParamsAuthorization: Option[Map[String,String]] = authorization.flatMap{ Headers.parseDigestAuthParams }
+  
+  def digestAuthUser: Option[String] = digestAuthParams.flatMap{ _.get("username") }
+  
+  //
+  // Misc Auth Helpers
+  //
+  
+  /** Either the Basic or Digest auth username from the Authorization header */
+  def authUsername: Option[String] = basicAuthUser orElse digestAuthUser
 }
 
 final case class ImmutableHeaders(nettyHeaders: HttpHeaders) extends Headers {
@@ -560,5 +641,13 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   
   def xUACompatible_=(v: String): Unit = set(NonStandardNames.X_UA_COMPATIBLE, v)
   def xUACompatible_=(v: Option[String]): Unit = set(NonStandardNames.X_UA_COMPATIBLE, v)
+  
+  //
+  // Authorization
+  //
 
+  def basicAuthorization_=(userPass: (String,String)): Unit = {
+    val (user, pass) = userPass
+    Headers.makeBasicAuthorization(user, pass)
+  }
 }

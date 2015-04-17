@@ -16,7 +16,9 @@
 package fm.http.server
 
 import fm.common.{Base64, Logging}
+import fm.common.Implicits._
 import fm.http.{Headers, Status}
+import java.nio.charset.StandardCharsets
 import io.netty.handler.codec.http.HttpHeaders
 import scala.concurrent.Future
 import scala.util.matching.Regex
@@ -45,8 +47,8 @@ final case class BasicAuth(realm: String, users: Map[String, String]) extends Au
     val auth: String = request.headers.authorization.getOrElse{ return false } 
     
     auth match {
-      case BasicAuthHeader(encoded) => new String(Base64.decode(encoded)) match {
-        case BasicAuthSplit(user, pass) => users.get(user).map{ _ == pass }.getOrElse(false)
+      case BasicAuthHeader(encoded) => new String(Base64.decode(encoded), StandardCharsets.ISO_8859_1) match {
+        case BasicAuthSplit(user, pass) => users.get(user).map{ _ === pass }.getOrElse(false)
         case _ => false
       }
       case _ => false

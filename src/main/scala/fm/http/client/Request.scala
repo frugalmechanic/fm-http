@@ -15,20 +15,22 @@
  */
 package fm.http.client
 
+import fm.common.URL
+import fm.common.Implicits._
+import fm.http._
+import java.io.File
 import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.handler.codec.http.{ClientCookieEncoder, DefaultFullHttpRequest, DefaultHttpRequest, FullHttpRequest, HttpHeaders, HttpMessage, HttpRequest, HttpMethod, HttpVersion}
-import java.io.File
-import fm.http._
 
 object Request {
-  def Get(uri: String, headers: Headers): FullRequest = FullRequest(HttpMethod.GET, uri, headers)
+  def Get(url: String, headers: Headers): FullRequest = FullRequest(HttpMethod.GET, URL(url), headers)
   
-  def Head(uri: String, headers: Headers): FullRequest = FullRequest(HttpMethod.HEAD, uri, headers)
+  def Head(url: String, headers: Headers): FullRequest = FullRequest(HttpMethod.HEAD, URL(url), headers)
   
-  def Post(uri: String, headers: Headers): FullRequest = FullRequest(HttpMethod.POST, uri, headers)
-  def Post(uri: String, headers: Headers, buf: ByteBuf): FullRequest = FullRequest(HttpMethod.POST, uri, headers, buf)
-  def Post(uri: String, headers: Headers, head: LinkedHttpContent): AsyncRequest = AsyncRequest(HttpMethod.POST, uri, headers, head)
-  def Post(uri: String, headers: Headers, file: File): FileRequest = FileRequest(HttpMethod.POST, uri, headers, file)
+  def Post(url: String, headers: Headers): FullRequest = FullRequest(HttpMethod.POST, URL(url), headers)
+  def Post(url: String, headers: Headers, buf: ByteBuf): FullRequest = FullRequest(HttpMethod.POST, URL(url), headers, buf)
+  def Post(url: String, headers: Headers, head: LinkedHttpContent): AsyncRequest = AsyncRequest(HttpMethod.POST, URL(url), headers, head)
+  def Post(url: String, headers: Headers, file: File): FileRequest = FileRequest(HttpMethod.POST, URL(url), headers, file)
 }
 
 sealed trait Request {
@@ -36,7 +38,10 @@ sealed trait Request {
   def headers: Headers
   
   /** The complete URL that we are requesting (e.g. http://frugalmechanic.com/foo/bar?param=value) */
-  def url: String
+  def url: URL
+  
+  /** This if the URI part of the request:  /foo/bar?param=value */
+  def requestURI: String = url.path.getOrElse("/")+url.query.map{ "?"+_ }.getOrElse("")
   
   /** Make a copy of this Request replacing this.headers with newHeaders */
   def withHeaders(newHeaders: Headers): Request
@@ -54,7 +59,7 @@ sealed trait Request {
 /**
  * This represents a full HTTP Request (both headers and complete body)
  */
-final case class FullRequest(method: HttpMethod, url: String, headers: Headers = Headers.empty, buf: ByteBuf = Unpooled.EMPTY_BUFFER) extends Request with FullMessage {
+final case class FullRequest(method: HttpMethod, url: URL, headers: Headers = Headers.empty, buf: ByteBuf = Unpooled.EMPTY_BUFFER) extends Request with FullMessage {
   def toFullHttpRequest(version: HttpVersion, uri: String): FullHttpRequest = {
     initHeaders(new DefaultFullHttpRequest(version, method, uri, buf))
   }
@@ -65,7 +70,7 @@ final case class FullRequest(method: HttpMethod, url: String, headers: Headers =
 /**
  * This represents a chunked HTTP Request with headers and the first chunk along with a pointer to the next chunk
  */
-final case class AsyncRequest(method: HttpMethod, url: String, headers: Headers, head: LinkedHttpContent) extends Request with AsyncMessage {
+final case class AsyncRequest(method: HttpMethod, url: URL, headers: Headers, head: LinkedHttpContent) extends Request with AsyncMessage {
   def toHttpRequest(version: HttpVersion, uri: String): HttpRequest = {
     initHeaders(new DefaultHttpRequest(version, method, uri))
   }
@@ -76,7 +81,7 @@ final case class AsyncRequest(method: HttpMethod, url: String, headers: Headers,
 /**
  * This represents a File that we want to send as the request body
  */
-final case class FileRequest(method: HttpMethod, url: String, headers: Headers, file: File) extends Request with FileMessage {
+final case class FileRequest(method: HttpMethod, url: URL, headers: Headers, file: File) extends Request with FileMessage {
   def toHttpRequest(version: HttpVersion, uri: String): HttpRequest = {
     initHeaders(new DefaultHttpRequest(version, method, uri))
   }
