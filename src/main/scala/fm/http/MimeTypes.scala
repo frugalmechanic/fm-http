@@ -84,7 +84,7 @@ object MimeTypes {
 
   def getExtension(name: String): Option[String] = {
     val idx: Int = name.lastIndexOf('.')
-    if(-1 == idx) None else Some(name.substring(idx+1, name.length))
+    if(-1 === idx) None else Some(name.substring(idx+1, name.length))
   }
 
   def isCompressable(contentType: String): Boolean = {

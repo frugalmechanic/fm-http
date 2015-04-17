@@ -37,7 +37,7 @@ object Cookie {
   def apply(netty: NettyCookie): Cookie = Cookie(
     name = netty.getName(),
     value = netty.getValue(),
-    maxAge = Some(netty.getMaxAge()).filterNot{ _ == Long.MinValue },
+    maxAge = Some(netty.getMaxAge()).filterNot{ _ === Long.MinValue },
     path = Option(netty.getPath()),
     domain = Option(netty.getDomain()),
     isSecure = netty.isSecure(),

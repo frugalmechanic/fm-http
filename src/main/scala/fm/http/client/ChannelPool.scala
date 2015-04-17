@@ -15,16 +15,17 @@
  */
 package fm.http.client
 
+import fm.common.Logging
+import fm.common.Implicits._
 import java.io.Closeable
 import java.util.{Deque, Queue}
 import java.util.concurrent.{ConcurrentHashMap, ConcurrentLinkedDeque, LinkedBlockingQueue}
 import java.util.concurrent.atomic.AtomicInteger
+import io.netty.channel.Channel
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
-import io.netty.channel.Channel
-import fm.common.Logging
 
 object ChannelPool {
   private case class IdleChannel(channel: Channel, lastActivity: Long)
@@ -124,7 +125,7 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
     
     while(it.hasNext() && !done) {
       val idle: IdleChannel = it.next()
-      if (idle.channel == ch) {
+      if (idle.channel === ch) {
         it.remove()
         done = true
       }

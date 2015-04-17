@@ -63,7 +63,7 @@ object DigestAuth {
       print("Again: ")
       val pw2 = new String(System.console.readPassword())
 
-      require(pw1 == pw2, "Passwords do not match!")
+      require(pw1 === pw2, "Passwords do not match!")
       pw1
     }
 
@@ -208,7 +208,7 @@ final case class DigestAuth(
     val ha1Precomputed: String = users(pUsername)
     val ha1Plaintext: String = digestHash(realm=realm, username=pUsername, password=users(pUsername))
 
-    val res: Boolean = pResponse == computeResponse(ha1Precomputed) || pResponse == computeResponse(ha1Plaintext)
+    val res: Boolean = pResponse === computeResponse(ha1Precomputed) || pResponse === computeResponse(ha1Plaintext)
 
     if (!res && logger.isDebugEnabled) logger.debug("Response mismatch - Expected: "+computeResponse(ha1Precomputed)+" OR "+computeResponse(ha1Plaintext)+"  Got: "+pResponse)
     

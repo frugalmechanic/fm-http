@@ -42,7 +42,7 @@ abstract class HttpServerApp extends Logging {
   
   private[this] val DETATCH_STRING: String = "\u0000"*4 // 4 NULL Characters
   private[this] val IS_CHILD_PROPERTY_KEY: String = "fm.webapp.is_child_process"
-  private[this] val isChildProcess: Boolean = "true" == System.getProperty(IS_CHILD_PROPERTY_KEY)
+  private[this] val isChildProcess: Boolean = "true" === System.getProperty(IS_CHILD_PROPERTY_KEY)
   
   private[this] val verbosePosix: Boolean = true
 
@@ -72,7 +72,7 @@ abstract class HttpServerApp extends Logging {
     val ports: Set[Int] = parsePorts(Options.port.getOrElse(Seq("8080")))
 
     require(ports.nonEmpty, "Missing --port option")
-    require(ports.size == 1 || ports.size == 2, "We only support 1 or 2 ports")
+    require(ports.size === 1 || ports.size === 2, "We only support 1 or 2 ports")
     
     println("Using port(s): "+ports.mkString(", "))
     
@@ -271,9 +271,9 @@ abstract class HttpServerApp extends Logging {
     }
   }
   
-  def alive(port: Int): Boolean = get("/_alive", port) == 200
-  def ping(port: Int): Boolean = get("/_ping", port) == 200
-  def shutdown(port: Int): Boolean = get("/_shutdown", port) == 200
+  def alive(port: Int): Boolean = get("/_alive", port) === 200
+  def ping(port: Int): Boolean = get("/_ping", port) === 200
+  def shutdown(port: Int): Boolean = get("/_shutdown", port) === 200
   
   def get(path: String, port: Int): Int = {
     val url: String = "http://localhost:"+port+path

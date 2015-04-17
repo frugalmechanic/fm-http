@@ -72,7 +72,7 @@ final case class StaticClasspathFileHandler(root: File, devMode: Boolean, classL
     
     val ifModifiedSince: Option[DateTime] = request.headers.ifModifiedSince
     
-    if (ifModifiedSince.exists{ _.getMillis() == conn.getLastModified() }) {
+    if (ifModifiedSince.exists{ _.getMillis() === conn.getLastModified() }) {
       return Some(RequestHandler.constant(Response.NotModified(headers)))
     }
     

@@ -158,7 +158,7 @@ final class ReloadingClassLoader(allowedPackages: Seq[String], parent: ClassLoad
   def modifiedClasses: Set[String] = synchronized {
     timestamps.asScala.filterNot{ case (name, timestamp) =>
       // Ignore classes that are valid but we haven't loaded
-      timestamp == Long.MinValue
+      timestamp === Long.MinValue
     }.filter { case (name, timestamp) => 
       lookupLastModified(name) != timestamp
     }.map{ case (name, _) => name }.toSet

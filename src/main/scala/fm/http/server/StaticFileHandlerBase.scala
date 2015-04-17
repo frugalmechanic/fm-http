@@ -58,7 +58,7 @@ trait StaticFileHandlerBase extends RequestRouter {
     
     val ifModifiedSince: Option[DateTime] = request.headers.ifModifiedSince
     
-    if (ifModifiedSince.exists{ _.getMillis() == f.lastModified() }) {
+    if (ifModifiedSince.exists{ _.getMillis() === f.lastModified() }) {
       return Some(RequestHandler.constant(Response.NotModified(headers)))
     }
     

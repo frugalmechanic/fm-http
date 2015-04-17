@@ -15,6 +15,7 @@
  */
 package fm.http
 
+import fm.common.Implicits._
 import io.netty.handler.codec.http.HttpResponseStatus
 
 final class Status private (netty: HttpResponseStatus) {
@@ -22,7 +23,13 @@ final class Status private (netty: HttpResponseStatus) {
   def msg: String = netty.reasonPhrase()
   
   /** Is this a 200 OK Response? */
-  def isOK: Boolean = netty == HttpResponseStatus.OK
+  def isOK: Boolean = netty === HttpResponseStatus.OK
+  
+  /** Is this a 401 Unauthorized Response? */
+  def isUnauthorized: Boolean = netty === HttpResponseStatus.UNAUTHORIZED
+  
+  /** Is this a 403 Forbidden Response? */
+  def isForbidden: Boolean = netty === HttpResponseStatus.FORBIDDEN
   
   /** If this a 301/302/303/307 response that should include a Location redirect? */
   def isRedirect: Boolean = netty match {
@@ -37,7 +44,7 @@ final class Status private (netty: HttpResponseStatus) {
   
   override def hashCode: Int = netty.hashCode()
   override def equals(other: Any): Boolean = other match {
-    case s: Status => s.code == code
+    case s: Status => s.code === code
     case _ => false
   }
 }

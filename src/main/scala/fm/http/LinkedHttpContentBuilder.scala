@@ -15,11 +15,12 @@
  */
 package fm.http
 
+import fm.common.Implicits._
 import java.lang.ref.WeakReference
 import java.io.Closeable
-import scala.concurrent.{Future, Promise}
 import io.netty.buffer.ByteBuf
 import io.netty.handler.codec.http.{HttpContent, HttpObject, LastHttpContent}
+import scala.concurrent.{Future, Promise}
 
 object LinkedHttpContentBuilder {
   val empty: LinkedHttpContentBuilder = {
@@ -38,7 +39,7 @@ object LinkedHttpContentBuilder {
   
   private def isEmptyLastContent(content: HttpContent): Boolean = isEmpty(content) && content.isInstanceOf[LastHttpContent]
   
-  private def isEmpty(content: HttpContent): Boolean = content.content().readableBytes() == 0
+  private def isEmpty(content: HttpContent): Boolean = content.content().readableBytes() === 0
   private def nonEmpty(content: HttpContent): Boolean = !isEmpty(content)
 }
 

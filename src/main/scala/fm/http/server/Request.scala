@@ -16,6 +16,7 @@
 package fm.http.server
 
 import fm.common.{IP, Logging, QueryParams}
+import fm.common.Implicits._
 import fm.http._
 import java.io.Closeable
 import io.netty.handler.codec.http.{HttpHeaders, HttpMethod, HttpVersion}
@@ -31,7 +32,7 @@ object Request {
     import HttpMethod.{POST, PUT, PATCH}
     
     val method: HttpMethod = request.getMethod()
-    val validMethod: Boolean = method == POST || method == PUT || method == PATCH
+    val validMethod: Boolean = method === POST || method === PUT || method === PATCH
     val hasContentLength: Boolean = HttpHeaders.getContentLength(request, -1) > 0
     val isChunked: Boolean = HttpHeaders.isTransferEncodingChunked(request)
     

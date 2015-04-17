@@ -15,9 +15,10 @@
  */
 package fm.http.server
 
-import scala.concurrent.Future
 import fm.common.Logging
+import fm.common.Implicits._
 import fm.http.Status
+import scala.concurrent.Future
 
 object ControlHandler {
   private def Ok = Future.successful(Response(Status.OK, "ok"))
@@ -40,7 +41,7 @@ final case class ControlHandler(server: HttpServer, authKey: String) extends Def
     if (request.remoteIp.isNotLocalhost) return false
     
     // TODO: maybe make this something fancier (maybe using the MessageCrypto class once it's moved out of the internal repository)
-    val res: Boolean = request.params.getFirst("key").exists{ _ == authKey }
+    val res: Boolean = request.params.getFirst("key").exists{ _ === authKey }
     if (!res) logger.error("Unauthorized ControlHandler Access Attempt: "+request)
     res
   }

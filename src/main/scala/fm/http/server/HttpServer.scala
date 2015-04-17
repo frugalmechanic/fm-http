@@ -173,7 +173,7 @@ final case class HttpServer (port: Int = 8080, router: RequestRouter, authKey: S
     
     val outstandingRequests: Int = allChannels.asScala.count{ NettyHttpServerPipelineHandler.isProcessingRequest }
     
-    if (seconds == 0 || outstandingRequests == 0) {
+    if (seconds === 0 || outstandingRequests === 0) {
       if (outstandingRequests > 0) logger.warn(s"Still waiting for $outstandingRequests requests to finish processing")
       promise.success(())
     } else {

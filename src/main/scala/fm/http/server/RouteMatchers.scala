@@ -94,7 +94,7 @@ object RouteMatchers {
   }
   
   final case class HttpMethodMatcher(method: HttpMethod) {
-    def unapply(request: Request): Option[String] = if (request.method == method) Some(request.path) else None
+    def unapply(request: Request): Option[String] = if (request.method === method) Some(request.path) else None
   }
   
   implicit def StringToDefaultHttpMethodMatcher(s: String): HttpMethodMatcher = GET

@@ -217,6 +217,6 @@ final case class VirtualHostRequestRouter(map: Map[String, RequestRouter]) exten
 
   private def stripFirstSubDomain(host: String): String = {
     val idx: Int = host.indexOf('.')
-    if (idx == -1) "" else host.substring(idx + 1)
+    if (idx === -1) "" else host.substring(idx + 1)
   }
 }

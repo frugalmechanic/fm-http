@@ -14,7 +14,7 @@ scalacOptions := Seq("-unchecked", "-deprecation", "-language:implicitConversion
 
 libraryDependencies ++= Seq(
   "com.frugalmechanic" %% "scala-optparse" % "1.1.1",
-  "com.frugalmechanic" %% "fm-common" % "0.2.0",
+  "com.frugalmechanic" %% "fm-common" % "0.3.0-SNAPSHOT",
   "com.frugalmechanic" %% "fm-lazyseq" % "0.2.0" % "test"
 )
 

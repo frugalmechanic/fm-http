@@ -26,7 +26,7 @@ final case class DomainRedirectFilter(host: String) extends RequestFilter {
   def handle(request: Request, handler: RequestHandler): Future[Response] = {
     val requestHost: String = request.headers.host.getOrElse("")
     
-    if (host == requestHost) {
+    if (host === requestHost) {
       handler(request)
     } else {
       // Use a scheme-relative URL

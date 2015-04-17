@@ -15,6 +15,10 @@
  */
 package fm.http.server
 
+import fm.common.{IP, Logging}
+import fm.common.Implicits._
+import fm.http._
+
 import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.channel.{Channel, ChannelHandlerContext, DefaultFileRegion, SimpleChannelInboundHandler}
 import io.netty.channel.group.ChannelGroup
@@ -26,9 +30,6 @@ import java.io.{File, FileNotFoundException, InputStream, RandomAccessFile}
 import java.util.Date
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
-
-import fm.common.{IP, Logging}
-import fm.http._
 
 object NettyHttpServerPipelineHandler {
   io.netty.handler.codec.http.multipart.DiskAttribute.deleteOnExitTemporaryFile = false  // DO NOT USE File.deleteOnExit() since it uses an append-only LinkedHashSet
@@ -195,7 +196,7 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     // Set the "Date" HTTP Header if it isn't already set
     if (null == response.headers().get(HttpHeaders.Names.DATE)) HttpHeaders.setDate(response, new Date)
     
-    if (!request.isContentFullyRead && response.getStatus() == HttpResponseStatus.OK) {
+    if (!request.isContentFullyRead && response.getStatus() === HttpResponseStatus.OK) {
       logger.warn("Sending a 200 response but the request body has not been fully read: "+request)
     }
     
@@ -364,7 +365,7 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
    *  http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.3
    */
   private def includeContentLength(request: Request, response: HttpResponse): Boolean = {
-    if (request.method == HttpMethod.HEAD) return false
+    if (request.method === HttpMethod.HEAD) return false
     
     response.getStatus.code match {
       case 100 | 101 | 102 => false
