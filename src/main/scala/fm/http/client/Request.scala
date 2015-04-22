@@ -21,6 +21,7 @@ import fm.http._
 import java.io.File
 import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.handler.codec.http.{ClientCookieEncoder, DefaultFullHttpRequest, DefaultHttpRequest, FullHttpRequest, HttpHeaders, HttpMessage, HttpRequest, HttpMethod, HttpVersion}
+import io.netty.util.CharsetUtil
 
 object Request {
   def Get(url: String, headers: Headers): FullRequest = FullRequest(HttpMethod.GET, URL(url), headers)
@@ -28,6 +29,7 @@ object Request {
   def Head(url: String, headers: Headers): FullRequest = FullRequest(HttpMethod.HEAD, URL(url), headers)
   
   def Post(url: String, headers: Headers): FullRequest = FullRequest(HttpMethod.POST, URL(url), headers)
+  def Post(url: String, headers: Headers, data: String): FullRequest = FullRequest(HttpMethod.POST, URL(url), headers, Unpooled.copiedBuffer(data, CharsetUtil.UTF_8))
   def Post(url: String, headers: Headers, buf: ByteBuf): FullRequest = FullRequest(HttpMethod.POST, URL(url), headers, buf)
   def Post(url: String, headers: Headers, head: LinkedHttpContent): AsyncRequest = AsyncRequest(HttpMethod.POST, URL(url), headers, head)
   def Post(url: String, headers: Headers, file: File): FileRequest = FileRequest(HttpMethod.POST, URL(url), headers, file)
