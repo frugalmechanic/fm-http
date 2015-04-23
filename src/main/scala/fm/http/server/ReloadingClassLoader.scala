@@ -1,6 +1,7 @@
 package fm.http.server
 
 import fm.common.IOUtils
+import fm.common.Implicits._
 import java.io.{File, InputStream}
 import java.lang.reflect.Method
 import java.net.{URL, URLClassLoader, URLConnection}
