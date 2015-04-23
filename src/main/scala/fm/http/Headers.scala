@@ -324,7 +324,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   //
   
   /** Either the Basic or Digest auth username from the Authorization header */
-  def authUsername: Option[String] = basicAuthUser orElse digestAuthUser
+  def authUser: Option[String] = basicAuthUser orElse digestAuthUser
 }
 
 final case class ImmutableHeaders(nettyHeaders: HttpHeaders) extends Headers {
