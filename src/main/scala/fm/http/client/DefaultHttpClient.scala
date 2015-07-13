@@ -34,6 +34,7 @@ import io.netty.util.concurrent.GlobalEventExecutor
 
 import java.util.concurrent.{ConcurrentHashMap, TimeoutException, TimeUnit}
 import java.io.{Closeable, File, FileNotFoundException, IOException}
+import java.nio.charset.Charset
 import java.lang.ref.WeakReference
 import java.net.MalformedURLException
 
@@ -145,7 +146,8 @@ final case class DefaultHttpClient(
   maxConnectionsPerHost: Int,     // Only applies if useConnectionPool is true
   maxConnectionIdleDuration: FiniteDuration,
   defaultResponseTimeout: Duration, // The maximum time to wait for a Response
-  defaultConnectTimeout: Duration // The maximum time to wait to connect to a server
+  defaultConnectTimeout: Duration, // The maximum time to wait to connect to a server
+  defaultCharset: Charset // The default charset to use (if none is specified in the response) when converting responses to strings
 ) extends HttpClient with Logging {
   import DefaultHttpClient.{EndPoint, ThreadFactory, TimeoutTask, workerGroup}
   

@@ -43,6 +43,9 @@ object Response {
   /** 304 */
   def NotModified(headers: Headers = Headers.empty): Response = apply(Status.NOT_MODIFIED, headers)
   
+  /** 404 */
+  def NotFound(headers: Headers = Headers.empty): Response = apply(Status.NOT_FOUND, headers)
+  
   def apply(status: Status, body: String): Response = plain(status, body, Headers.empty)
   def apply(status: Status, body: String, headers: Headers): Response = plain(status, body, headers)
   def apply(status: Status, headers: Headers, body: String): Response = plain(status, body, headers)

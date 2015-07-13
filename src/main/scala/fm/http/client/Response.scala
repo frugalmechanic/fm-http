@@ -54,7 +54,7 @@ sealed abstract class Response(response: HttpResponse) extends Closeable {
     s"${version.text} ${status.code} ${status.msg}\n\n$headers"
   }
 
-  protected def detectCharset(): Charset = {
+  protected def detectCharset(defaultCharset: Charset): Charset = {
     import Response.CharsetRegex
 
     response.headers().get("Content-Type").toBlankOption.flatMap { contentType: String =>
@@ -64,7 +64,7 @@ sealed abstract class Response(response: HttpResponse) extends Closeable {
         Charset.forName(charsetName) // Set current charset to that
       }
     }
-  }.getOrElse(CharsetUtil.ISO_8859_1) // Default charset for detection is latin-1 (http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.7.1)
+  }.getOrElse(defaultCharset)
 }
 
 /**
@@ -113,13 +113,13 @@ final class AsyncResponse (response: HttpResponse, content: LinkedHttpContentRea
   
   val body: Option[LinkedHttpContentReader] = if (hasBody) Some(content) else None
 
-  def toFullResponse(maxLength: Long = Long.MaxValue): Future[FullResponse] = body match {
+  def toFullResponse(maxLength: Long = Long.MaxValue, defaultCharset: Charset = null): Future[FullResponse] = body match {
     case None         => Future.successful(new FullResponse(response, ""))
-    case Some(reader) => reader.readToString(maxLength, detectCharset()).map{ new FullResponse(response, _) }
+    case Some(reader) => reader.readToString(maxLength, detectCharset(defaultCharset)).map{ new FullResponse(response, _) }
   }
 
-  def readBodyToString(maxLength: Long = Long.MaxValue): Future[String] = {
-    val f = body.map{ _.readToString(maxLength, detectCharset()) }.getOrElse{ Future.successful("") }
+  def readBodyToString(maxLength: Long = Long.MaxValue, defaultCharset: Charset = null): Future[String] = {
+    val f = body.map{ _.readToString(maxLength, detectCharset(defaultCharset)) }.getOrElse{ Future.successful("") }
     f.onComplete{ case _ => close() }
     f
   }

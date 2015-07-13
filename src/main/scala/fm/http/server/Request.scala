@@ -43,7 +43,7 @@ object Request {
 final class Request (
   val remoteIp: IP, // The Remote IP making the request (possibly extracted from FM-Remote-IP or X-Forwarded-For)
   request: HttpRequest,
-  content: LinkedHttpContentReader
+  val content: LinkedHttpContentReader
 )(implicit execution: ExecutionContext) extends Logging with Closeable {
   
   private[this] val completedPromise: Promise[Unit] = Promise()
@@ -101,7 +101,9 @@ final class Request (
     }
   }
   
-  private[this] val postDecoder: Option[HttpPostRequestDecoder] = if (Request.expectBodyContent(request)) {
+  // TODO: figure out a better strategy for this and the postBody val.  Note: This is lazy
+  // to avoid triggering the requireEmptyContent() when the content-length is 0
+  private[this] lazy val postDecoder: Option[HttpPostRequestDecoder] = if (Request.expectBodyContent(request)) {
     Some(new HttpPostRequestDecoder(request))
   } else {
     requireEmptyContent()
@@ -115,6 +117,10 @@ final class Request (
     case Some(decoder) => content.foldLeft(decoder){ (decoder, buf) => decoder.offer(new DefaultHttpContent(buf)); decoder }.map{ _.offer(LastHttpContent.EMPTY_LAST_CONTENT) }.map{ decoder => PostBody.fromNetty(decoder.getBodyHttpDatas().asScala.toVector) }
     case None => Future.successful(PostBody.empty)
   }
+  
+  def isPOST: Boolean = method === HttpMethod.POST
+  def isGET: Boolean = method === HttpMethod.GET
+  def isHEAD: Boolean = method === HttpMethod.HEAD
   
   def isContentFullyRead: Boolean = if (Request.expectBodyContent(request)) content.isFullyRead else true
   

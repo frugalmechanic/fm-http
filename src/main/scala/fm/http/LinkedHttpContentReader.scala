@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Frugal Mechanic (http://frugalmechanic.com)
+ * Copyright 2015 Frugal Mechanic (http://frugalmechanic.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,10 +21,11 @@ import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http.{DefaultFullHttpResponse, FullHttpResponse, HttpResponseStatus, HttpVersion}
 import io.netty.util.CharsetUtil
-import java.io.{Closeable, File, FileOutputStream}
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream, Closeable, File, FileOutputStream}
 import java.nio.charset.Charset
 import java.util.concurrent.atomic.AtomicBoolean
 import fm.common.Implicits._
+import fm.common.IOUtils
 
 object LinkedHttpContentReader {
   def apply(need100Continue: Boolean, head: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext, executor: ExecutionContext): LinkedHttpContentReader = new LinkedHttpContentReader(need100Continue, head)
@@ -35,7 +36,7 @@ object LinkedHttpContentReader {
 final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext, executor: ExecutionContext) extends Closeable {
   import LinkedHttpContentReader.CONTINUE
 
-  private[this] var foldLeftCalled: AtomicBoolean = new AtomicBoolean(false)
+  private[this] val foldLeftCalled: AtomicBoolean = new AtomicBoolean(false)
   @volatile private[this] var current: Future[Option[LinkedHttpContent]] = head
 
   /**
@@ -56,9 +57,33 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   def future: Future[Unit] = completedPromise.future
   
   /**
+   * Read the response body into an Array[Byte]
+   */
+  def readToByteArray(maxLength: Long = Long.MaxValue): Future[Array[Byte]] = {
+    foldLeft(new ByteArrayOutputStream){ (out: ByteArrayOutputStream, buf: ByteBuf) =>
+      buf.readBytes(out, buf.readableBytes())
+      require(out.size() <= maxLength, s"Body exceeds maxLength.  Body Length (so far): ${out.size}  Specified Max Length: $maxLength")
+      out
+    }.map{ _.toByteArray }
+  }
+  
+  /**
    * Read the response body into a string
    */
   def readToString(maxLength: Long = Long.MaxValue, encoding: Charset = CharsetUtil.ISO_8859_1): Future[String] = {
+    if (null == encoding) readToStringWithDetectedCharset(maxLength) else readToStringWithCharset(encoding, maxLength)
+  }
+  
+  def readToStringWithDetectedCharset(maxLength: Long = Long.MaxValue, defaultEncoding: Charset = CharsetUtil.ISO_8859_1): Future[String] = {
+    readToByteArray(maxLength).map{ bytes: Array[Byte] =>
+      val charset: Option[Charset] = IOUtils.detectCharset(new ByteArrayInputStream(bytes), false)
+      
+      // The default charset for text should be Latin-1 according to http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.7.1
+      new String(bytes, charset.getOrElse(defaultEncoding))
+    }
+  }
+  
+  def readToStringWithCharset(encoding: Charset, maxLength: Long = Long.MaxValue): Future[String] = {
     foldLeft(new StringBuilder){ (sb: StringBuilder, buf: ByteBuf) =>
       sb.append(buf.toString(encoding))
       require(sb.length <= maxLength, s"Body exceeds maxLength.  Body Length (so far): ${sb.length}  Specified Max Length: $maxLength")
@@ -83,13 +108,13 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   
   /**
    * This is an asynchronous foreach where 'f' is called for each ByteBuf as the data is available.
-   * @returns A future is returned that is completed when 'f' has been called for each chunk.
+   * @return A future is returned that is completed when 'f' has been called for each chunk.
    */
   def foreach[U](f: ByteBuf => U): Future[Unit] = foldLeft[Unit](){ (unit, buf) => f(buf) }.map{ _ => Unit }
   
   /**
    * This is an asynchronous foldLeft where op is called only when the chunks are ready.
-   * @returns The Result is returned as a Future
+   * @return The Result is returned as a Future
    */
   def foldLeft[B](z: B)(op: (B, ByteBuf) => B): Future[B] = synchronized {
     require(foldLeftCalled.compareAndSet(false, true), "foldLeft already called!")
@@ -132,7 +157,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   }
   
   def close(): Unit = try {
-    if (!foldLeftCalled.get()) { 
+    if (foldLeftCalled.compareAndSet(false, true)) { 
       foldLeft(){ (_, buf) => Unit }
     }
   } catch {

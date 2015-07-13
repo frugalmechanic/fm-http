@@ -18,9 +18,8 @@ package fm.http.client
 import fm.common.Implicits._
 import fm.common.ScheduledTaskRunner
 import fm.http._
-
 import java.io.Closeable
-
+import java.nio.charset.{Charset, StandardCharsets}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 
@@ -47,7 +46,8 @@ object HttpClient {
     maxConnectionsPerHost: Int = 8,     // Only applies if useConnectionPool is true
     maxConnectionIdleDuration: FiniteDuration = 30.seconds,
     defaultResponseTimeout: Duration = 5.minutes, // The maximum time to wait for a Response
-    defaultConnectTimeout: Duration = 30.seconds // The maximum time to wait to connect to a server    
+    defaultConnectTimeout: Duration = 30.seconds, // The maximum time to wait to connect to a server
+    defaultCharset: Charset = StandardCharsets.ISO_8859_1 // The default charset to use (if none is specified in the response) when converting responses to strings
   ): DefaultHttpClient = DefaultHttpClient(
     socksProxy = socksProxy,
     defaultMaxLength = defaultMaxLength,
@@ -56,7 +56,8 @@ object HttpClient {
     maxConnectionsPerHost = maxConnectionsPerHost,
     maxConnectionIdleDuration = maxConnectionIdleDuration,
     defaultResponseTimeout = defaultResponseTimeout,
-    defaultConnectTimeout = defaultConnectTimeout
+    defaultConnectTimeout = defaultConnectTimeout,
+    defaultCharset = defaultCharset
   )
   
   private val DefaultHeaders: ImmutableHeaders = {
@@ -77,6 +78,7 @@ abstract class HttpClient extends Closeable {
   def defaultMaxLength: Long
   def defaultHeaders: Headers
   def defaultResponseTimeout: Duration
+  def defaultCharset: Charset
   
   /**
    * Execute a Request returning the AsyncResponse
@@ -93,12 +95,22 @@ abstract class HttpClient extends Closeable {
   /**
    * Perform a GET request returning the FullResponse with a max length for the body
    */
-  final def getFull(url: String, headers: Headers = defaultHeaders, maxLength: Long = defaultMaxLength, timeout: Duration = defaultResponseTimeout): Future[FullResponse] = getAsync(url, headers, timeout).flatMap{ _.toFullResponse(maxLength) }
+  final def getFull(url: String, headers: Headers = defaultHeaders, maxLength: Long = defaultMaxLength, timeout: Duration = defaultResponseTimeout, defaultCharset: Charset = defaultCharset): Future[FullResponse] = getAsync(url, headers, timeout).flatMap{ _.toFullResponse(maxLength, defaultCharset) }
+  
+  /**
+   * Perform a POST request returning the FullResponse with a max length for the body
+   */
+  final def postFull(url: String, body: String, headers: Headers = defaultHeaders, maxLength: Long = defaultMaxLength, timeout: Duration = defaultResponseTimeout, defaultCharset: Charset = defaultCharset): Future[FullResponse] = postAsync(url, body, headers, timeout).flatMap{ _.toFullResponse(maxLength, defaultCharset) }
   
   /**
    * Perform a GET request returning an AsyncResponse for reading arbitrarily long response bodies
    */
   final def getAsync(url: String, headers: Headers = defaultHeaders, timeout: Duration = defaultResponseTimeout): Future[AsyncResponse] = execute(Request.Get(url, headers), timeout)
+  
+  /**
+   * Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies
+   */
+  final def postAsync(url: String, body: String, headers: Headers = defaultHeaders, timeout: Duration = defaultResponseTimeout): Future[AsyncResponse] = execute(Request.Post(url, headers, body), timeout)
   
   /**
    * Return an HttpClient that will use Basic auth for any calls made by it
