@@ -30,7 +30,7 @@ object Headers {
   val empty: Headers = ImmutableHeaders(HttpHeaders.EMPTY_HEADERS)
   
   def apply(headerValues: (String, Any)*): ImmutableHeaders = {
-    val headers = MutableHeaders()
+    val headers: MutableHeaders = MutableHeaders()
     
     headerValues.foreach { case (name, value) =>
       value match {
