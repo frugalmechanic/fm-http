@@ -17,6 +17,12 @@ package fm.http.server
 
 import scala.concurrent.Future
 
+object RequestFilter {
+  object empty extends RequestFilter {
+    def handle(request: Request, handler: RequestHandler): Future[Response] = handler(request) 
+  }
+}
+
 trait RequestFilter {
   def handle(request: Request, handler: RequestHandler): Future[Response]
 }
