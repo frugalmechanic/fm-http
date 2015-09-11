@@ -19,6 +19,7 @@ import fm.common.{IP, Logging, QueryParams}
 import fm.common.Implicits._
 import fm.http._
 import java.io.Closeable
+import java.util.IdentityHashMap
 import io.netty.handler.codec.http.{HttpHeaders, HttpMethod, HttpVersion}
 import io.netty.handler.codec.http.{DefaultHttpContent, DefaultHttpRequest, HttpRequest, LastHttpContent}
 import io.netty.handler.codec.http.multipart.{HttpPostRequestDecoder, InterfaceHttpData}
@@ -47,6 +48,9 @@ final class Request (
 )(implicit execution: ExecutionContext) extends Logging with Closeable {
   
   private[this] val completedPromise: Promise[Unit] = Promise()
+  
+  // Note - This is ONLY accessed via RequestLocal and synchronization is done there
+  private[server] lazy val requestLocalMap: IdentityHashMap[RequestLocal[_],AnyRef] = new IdentityHashMap()
   
   /**
    * This future is completed when the request has been fully processed
