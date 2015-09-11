@@ -47,6 +47,9 @@ final class ReloadingClassLoaderHolder(
     classLoader.addValidClasses(oldLoader.seenClasses)
     trackAndReportOldClassloaders(oldLoader)
     
+    // This is experimental and could cause problems
+    //oldLoader.destroyScalaObjects()
+    
     // Request a GC to try and clean up old class loaders
     System.gc()
   }

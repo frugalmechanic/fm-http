@@ -3,7 +3,7 @@ package fm.http.server
 import fm.common.IOUtils
 import fm.common.Implicits._
 import java.io.{File, InputStream}
-import java.lang.reflect.Method
+import java.lang.reflect.{Field, Method, Modifier}
 import java.net.{URL, URLClassLoader, URLConnection}
 import java.security.{ProtectionDomain, Policy, CodeSource, CodeSigner}
 import java.util.concurrent.ConcurrentHashMap
@@ -29,8 +29,13 @@ final class ReloadingClassLoader(allowedPackages: Seq[String], parent: ClassLoad
    *   1 - Track lastModified timestamps for classes we have loaded
    *   2 - Track classes that are valid with a lastModified of Long.MinValue
    */
-  private[this] val timestamps = new ConcurrentHashMap[String, Long]()
-
+  private[this] val timestamps: ConcurrentHashMap[String, Long] = new ConcurrentHashMap()
+  
+//  /**
+//   * This tracks the classes loaded by this class loader
+//   */
+//  private[this] val loadedClasses: java.util.List[Class[_]] = java.util.Collections.synchronizedList(new java.util.ArrayList())
+  
   def seenClasses: Vector[String] = timestamps.keys().asScala.toVector
 
   /** Add classes we expect to exist (i.e. we will wait for them to become available) */
@@ -132,6 +137,7 @@ final class ReloadingClassLoader(allowedPackages: Seq[String], parent: ClassLoad
       clazz = defineClass(name, info.bytes, 0, info.bytes.length, protectionDomain)
       debug(s"defineClass($name)")
       timestamps.put(name, info.lastModified)
+//      loadedClasses.add(clazz)
     }
 
     if(resolve) resolveClass(clazz)
@@ -169,4 +175,30 @@ final class ReloadingClassLoader(allowedPackages: Seq[String], parent: ClassLoad
     val tmp = name.replace(".", "/")
     if (tmp.endsWith(".class")) tmp else tmp+".class"
   }
+  
+//  /**
+//   * This clears out any Scala MODULE$ references to aid in GC
+//   */
+//  def destroyScalaObjects(): Unit = synchronized {
+//    // Use toIndexedSeq to make a copy since this could invoke loading additional classes
+//    // which would modify loadedClasses and throw an exception
+//    loadedClasses.asScala.toIndexedSeq.foreach { cls: Class[_] =>
+//      try {
+//        val field: Field = cls.getDeclaredField("MODULE$")
+//        val isStatic: Boolean = Modifier.isStatic(field.getModifiers())
+//        if (isStatic) setStaticField(field, null)
+//      } catch {
+//        case _: NoSuchFieldException => // Nothing to do
+//      }
+//    }
+//  }
+//  
+//  private def setStaticField(field: Field, newValue: Any): Unit = {
+//    field.setAccessible(true)
+//    val modifiersField = field.getClass.getDeclaredField("modifiers")
+//    modifiersField.setAccessible(true)
+//    modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL)
+//    
+//    field.set(null, newValue)
+//  }
 }
