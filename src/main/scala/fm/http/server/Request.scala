@@ -117,11 +117,17 @@ final class Request (
     case Some(decoder) => content.foldLeft(decoder){ (decoder, buf) => decoder.offer(new DefaultHttpContent(buf)); decoder }.map{ _.offer(LastHttpContent.EMPTY_LAST_CONTENT) }.map{ decoder => PostBody.fromNetty(decoder.getBodyHttpDatas().asScala.toVector) }
     case None => Future.successful(PostBody.empty)
   }
-  
-  def isPOST: Boolean = method === HttpMethod.POST
+
+  def isOPTIONS: Boolean = method === HttpMethod.OPTIONS
   def isGET: Boolean = method === HttpMethod.GET
   def isHEAD: Boolean = method === HttpMethod.HEAD
-  
+  def isPOST: Boolean = method === HttpMethod.POST
+  def isPUT: Boolean = method === HttpMethod.PUT
+  def isPATCH: Boolean = method === HttpMethod.PATCH
+  def isDELETE: Boolean = method === HttpMethod.DELETE
+  def isTRACE: Boolean = method === HttpMethod.TRACE
+  def isCONNECT: Boolean = method === HttpMethod.CONNECT
+ 
   def isContentFullyRead: Boolean = if (Request.expectBodyContent(request)) content.isFullyRead else true
   
   def close(): Unit = close(null)
