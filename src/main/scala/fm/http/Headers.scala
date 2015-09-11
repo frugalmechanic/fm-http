@@ -31,17 +31,16 @@ object Headers {
   
   def apply(headerValues: (String, Any)*): ImmutableHeaders = {
     val headers: MutableHeaders = MutableHeaders()
+    headers.withHeaders(headerValues:_*)
     
-    headerValues.foreach { case (name, value) =>
-      value match {
-        case str: String => headers.set(name, str)
-        case date: DateTime => headers.setDate(name, date)
-        case date: Date => headers.setDate(name, new DateTime(date.getTime()))
-        case int: Int => headers.setInt(name, int)
-        case long: Long => headers.setLong(name, long)
-        case _ => throw new IllegalArgumentException("Unknown Headers value type: "+value)
-      }
-    }
+    // Convert to immutable headers - this is safe since we know we won't be touching the MutableHeaders again
+    ImmutableHeaders(headers.nettyHeaders)
+  }
+  
+  def noCache(headerValues: (String, Any)*): ImmutableHeaders = {
+    val headers: MutableHeaders = MutableHeaders()
+    headers.withNoCache
+    headers.withHeaders(headerValues:_*)
     
     // Convert to immutable headers - this is safe since we know we won't be touching the MutableHeaders again
     ImmutableHeaders(headers.nettyHeaders)
@@ -146,6 +145,12 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
     h.add(nettyHeaders)
     h
   }
+  
+  /** Adds the passed in headers */
+  def withHeaders(headerValues: (String, Any)*): Headers
+  
+  /** Add the Cache-Control and Expires headers to prevent caching of this response */
+  def withNoCache: Headers
   
   /** These are the client side cookies that are being sent with the request */
   def withCookies(c: Traversable[Cookie]): Headers
@@ -328,6 +333,10 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
 }
 
 final case class ImmutableHeaders(nettyHeaders: HttpHeaders) extends Headers {
+  def withHeaders(headerValues: (String, Any)*): ImmutableHeaders = toMutableHeaders.withHeaders(headerValues:_*).toImmutableHeaders
+  
+  def withNoCache: ImmutableHeaders = toMutableHeaders.withNoCache.toImmutableHeaders
+  
   def withCookies(c: Traversable[Cookie]): ImmutableHeaders = {
     val m = toMutableHeaders
     m.cookies = c
@@ -374,6 +383,27 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   
   def setLong(name: String, value: Long): Unit = set(name, value.toString)
   def setLong(name: String, value: Option[Long]): Unit = set(name, value.map{ _.toString })
+  
+  def withHeaders(headerValues: (String, Any)*): MutableHeaders = {
+    headerValues.foreach { case (name, value) =>
+      value match {
+        case str: String => set(name, str)
+        case date: DateTime => setDate(name, date)
+        case date: Date => setDate(name, new DateTime(date.getTime()))
+        case int: Int => setInt(name, int)
+        case long: Long => setLong(name, long)
+        case _ => throw new IllegalArgumentException("Unknown Headers value type: "+value)
+      }
+    }
+    
+    this
+  }
+  
+  def withNoCache: MutableHeaders = {
+    cacheControl = "private, max-age=0, must-revalidate"
+    expires = "Mon, 07 Jul 2008 18:00:00 GMT"
+    this
+  }
   
   def withCookies(c: Traversable[Cookie]): MutableHeaders = {
     cookies = c
