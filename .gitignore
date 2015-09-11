@@ -8,3 +8,6 @@ target
 .worksheet
 .idea
 .idea_modules
+.cache-main
+.cache-tests
+
