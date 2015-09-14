@@ -400,8 +400,10 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   }
   
   def withNoCache: MutableHeaders = {
-    cacheControl = "private, max-age=0, must-revalidate"
-    expires = "Mon, 07 Jul 2008 18:00:00 GMT"
+    // http://stackoverflow.com/a/2068407
+    cacheControl = "no-cache, no-store, must-revalidate"
+    pragma = "no-cache"
+    expires = "0"
     this
   }
   
