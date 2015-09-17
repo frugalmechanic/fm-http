@@ -19,14 +19,15 @@ import fm.common.Implicits._
 import fm.common.{Base64, IndexedSeqProxy}
 import java.nio.charset.StandardCharsets
 import java.util.Date
-import io.netty.handler.codec.http.{ClientCookieEncoder, DefaultHttpHeaders, HttpHeaders, ServerCookieEncoder}
+import io.netty.handler.codec.http.{DefaultHttpHeaders, HttpHeaders}
+import io.netty.handler.codec.http.cookie.{ClientCookieEncoder, ServerCookieEncoder}
 import org.joda.time.{DateTime, DateTimeZone}
 import org.joda.time.format.{DateTimeFormat, DateTimeFormatter}
 import scala.collection.JavaConverters._
 import scala.util.Try
 import scala.util.matching.Regex
 
-object Headers {
+object Headers {  
   val empty: Headers = ImmutableHeaders(HttpHeaders.EMPTY_HEADERS)
   
   def apply(headerValues: (String, Any)*): ImmutableHeaders = {
@@ -232,7 +233,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   def cookie: Option[String] = get(Names.COOKIE)
   
   /** These are the client side cookies that are being sent with the request */
-  def cookies: Vector[Cookie] = cookie.map{ Cookie.tryParse }.getOrElse{ Vector.empty }
+  def cookies: Vector[Cookie] = cookie.map{ Cookie.tryParseCookieHeader }.getOrElse{ Vector.empty }
   
   def date: Option[DateTime] = getDate(Names.DATE)
   def eTag: Option[String] = get(Names.ETAG)
@@ -269,7 +270,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   def setCookie: Vector[String] = getAll(Names.SET_COOKIE)
   
   /** These are the server side cookies that are being sent with the response */
-  def setCookies: Vector[Cookie] = setCookie.flatMap{ Cookie.tryParse }
+  def setCookies: Vector[Cookie] = setCookie.flatMap{ Cookie.tryParseSetCookieHeader }
 
   def setCookie2: Vector[String] = getAll(Names.SET_COOKIE2)
   def te: Option[String] = get(Names.TE)
@@ -504,7 +505,7 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   def cookie_=(v: String): Unit = set(Names.COOKIE, v)
   def cookie_=(v: Option[String]): Unit = set(Names.COOKIE, v)
   
-  def cookies_=(v: Traversable[Cookie]): Unit = cookie = if (v.nonEmpty) Some(ClientCookieEncoder.encode(v.toSeq.map{ _.toNettyCookie }.asJava)) else None
+  def cookies_=(v: Traversable[Cookie]): Unit = cookie = if (v.nonEmpty) Some(ClientCookieEncoder.LAX.encode(v.toSeq.map{ _.toNettyCookie }.asJava)) else None
   def cookies_=(v: Option[Traversable[Cookie]]): Unit = cookies = v.getOrElse{ Nil }
   
   def date_=(v: DateTime): Unit = setDate(Names.DATE, v)
@@ -601,7 +602,7 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   def setCookie_=(v: Traversable[String]): Unit = setAll(Names.SET_COOKIE, v)
   def setCookie_=(v: Option[Traversable[String]]): Unit = setAll(Names.SET_COOKIE, v)
   
-  def setCookies_=(v: Traversable[Cookie]): Unit = setCookie = if (v.nonEmpty) Some(v.toSeq.map{ c: Cookie => ServerCookieEncoder.encode(c.toNettyCookie) }) else None
+  def setCookies_=(v: Traversable[Cookie]): Unit = setCookie = if (v.nonEmpty) Some(v.toSeq.map{ c: Cookie => ServerCookieEncoder.LAX.encode(c.toNettyCookie) }) else None
   def setCookies_=(v: Option[Traversable[Cookie]]): Unit = setCookies = v.getOrElse{ Nil }
   
   def setCookie2_=(v: Traversable[String]): Unit = setAll(Names.SET_COOKIE2, v)
