@@ -142,8 +142,9 @@ final case class DefaultHttpClient(
   socksProxy: Option[(String, Int)] = None,
   defaultMaxLength: Long,
   defaultHeaders: Headers,
-  useConnectionPool: Boolean, // Should we re-use connections? (Use HTTP Keep Alive?)
-  maxConnectionsPerHost: Int,     // Only applies if useConnectionPool is true
+  useConnectionPool: Boolean,  // Should we re-use connections? (Use HTTP Keep Alive?)
+  maxConnectionsPerHost: Int,  // Only applies if useConnectionPool is true
+  maxRequestQueuePerHost: Int, // Only applies if useConnectionPool is true
   maxConnectionIdleDuration: FiniteDuration,
   defaultResponseTimeout: Duration, // The maximum time to wait for a Response
   defaultConnectTimeout: Duration, // The maximum time to wait to connect to a server
@@ -158,16 +159,9 @@ final case class DefaultHttpClient(
    */
   def execute(r: Request, timeout: Duration): Future[AsyncResponse] = {
     execute0(r.url, r, timeout)
-    
-//    URL.tryParse(r.url) match {
-//      case Failure(ex) => Future.failed(ex)
-//      case Success(url) => execute0(url, r, timeout)
-//    }
   }
   
   def close(): Unit = {
-    //endpointMap.values().asScala.foreach{ _.close() }
-    //endpointMap.clear()
     allChannels.close().sync()
   }
   
@@ -195,7 +189,7 @@ final case class DefaultHttpClient(
       var pool: ChannelPool = if (null != poolRef) poolRef.get else null
       
       if (null == pool) {
-        pool = new ChannelPool(endPoint.prettyString, makeNewChannel(endPoint), limit = maxConnectionsPerHost, maxIdleMillis = maxConnectionIdleDuration.toMillis)
+        pool = new ChannelPool(endPoint.prettyString, makeNewChannel(endPoint), limit = maxConnectionsPerHost, maxQueueSize = maxRequestQueuePerHost, maxIdleMillis = maxConnectionIdleDuration.toMillis)
         endpointMap.put(endPoint, new WeakReference(pool))
       }
       
@@ -204,7 +198,6 @@ final case class DefaultHttpClient(
       makeNewChannel(endPoint)(null)
     }
   }
-  
   
   private[this] val traceSep: String = "======================================================================================================================="
   
@@ -240,9 +233,12 @@ final case class DefaultHttpClient(
     
     getChannel(host, port, ssl, socksProxy).onComplete {
       case Success(ch) =>
+        if (logger.isTraceEnabled) logger.trace("Success for getChannel() => "+ch+"  URI: "+uri)
+        
         // Check if the request timed out before we even got a channel
         val doWrite: Boolean = if (null == timeoutTask) true else timeoutTask.synchronized {
           if (timeoutTask.hasRun) {
+            if (logger.isTraceEnabled) logger.trace("Got channel but timeoutTask has already run.  Channel: "+ch)
             ch.close()
             false
           } else {
@@ -251,9 +247,13 @@ final case class DefaultHttpClient(
           }
         }
         
-        if (doWrite) ch.writeAndFlush(NettyHttpClientPipelineHandler.URIRequestAndPromise(uri, fixedRequest, promise))
+        if (doWrite) {
+          if (logger.isTraceEnabled) logger.trace(s"ch.writeAndFlush to channel: $ch for $host:$port$uri")
+          ch.writeAndFlush(NettyHttpClientPipelineHandler.URIRequestAndPromise(uri, fixedRequest, promise))
+        }
       
       case Failure(ex) =>
+        if (logger.isTraceEnabled) logger.trace("Failed to getChannel()")
         promise.tryFailure(ex)
     }
     
@@ -339,7 +339,7 @@ final case class DefaultHttpClient(
       }
     }
     
-    if (null != pool ) promise.future.map{ ch: Channel =>
+    if (null != pool) promise.future.map{ ch: Channel =>
       NettyHttpClientPipelineHandler.setChannelPool(ch, pool)
       ch
     } else {

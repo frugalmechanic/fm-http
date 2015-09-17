@@ -42,8 +42,9 @@ object HttpClient {
     socksProxy: Option[(String, Int)] = None,
     defaultMaxLength: Long = 10485760, /* 10MB (which may or may not be 10MB worth of Chars) */
     defaultHeaders: Headers = DefaultHeaders,
-    useConnectionPool: Boolean = true, // Should we re-use connections? (Use HTTP Keep Alive?)
-    maxConnectionsPerHost: Int = 8,     // Only applies if useConnectionPool is true
+    useConnectionPool: Boolean = true,   // Should we re-use connections? (Use HTTP Keep Alive?)
+    maxConnectionsPerHost: Int = 8,      // Only applies if useConnectionPool is true
+    maxRequestQueuePerHost: Int = 1024,  // Only applies if useConnectionPool is true
     maxConnectionIdleDuration: FiniteDuration = 30.seconds,
     defaultResponseTimeout: Duration = 5.minutes, // The maximum time to wait for a Response
     defaultConnectTimeout: Duration = 30.seconds, // The maximum time to wait to connect to a server
@@ -54,6 +55,7 @@ object HttpClient {
     defaultHeaders = defaultHeaders,
     useConnectionPool = useConnectionPool,
     maxConnectionsPerHost = maxConnectionsPerHost,
+    maxRequestQueuePerHost = maxRequestQueuePerHost,
     maxConnectionIdleDuration = maxConnectionIdleDuration,
     defaultResponseTimeout = defaultResponseTimeout,
     defaultConnectTimeout = defaultConnectTimeout,

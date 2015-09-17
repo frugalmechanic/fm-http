@@ -15,8 +15,8 @@
  */
 package fm.http
 
-import scala.concurrent.{ExecutionContext, Future, Promise}
-import scala.util.{Failure, Success, Try}
+import fm.common.Implicits._
+import fm.common.{IOUtils, Logging}
 import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http.{DefaultFullHttpResponse, FullHttpResponse, HttpResponseStatus, HttpVersion}
@@ -24,8 +24,8 @@ import io.netty.util.CharsetUtil
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, Closeable, File, FileOutputStream}
 import java.nio.charset.Charset
 import java.util.concurrent.atomic.AtomicBoolean
-import fm.common.Implicits._
-import fm.common.IOUtils
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.{Failure, Success, Try}
 
 object LinkedHttpContentReader {
   def apply(need100Continue: Boolean, head: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext, executor: ExecutionContext): LinkedHttpContentReader = new LinkedHttpContentReader(need100Continue, head)
@@ -33,7 +33,7 @@ object LinkedHttpContentReader {
   private val CONTINUE: FullHttpResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.CONTINUE, Unpooled.EMPTY_BUFFER)  
 }
 
-final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext, executor: ExecutionContext) extends Closeable {
+final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext, executor: ExecutionContext) extends Closeable with Logging {
   import LinkedHttpContentReader.CONTINUE
 
   private[this] val foldLeftCalled: AtomicBoolean = new AtomicBoolean(false)
@@ -117,6 +117,8 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
    * @return The Result is returned as a Future
    */
   def foldLeft[B](z: B)(op: (B, ByteBuf) => B): Future[B] = synchronized {
+    if (logger.isTraceEnabled) logger.trace(s"foldLeft - foldLeftCalled: ${foldLeftCalled.get}, current: $current")
+    
     require(foldLeftCalled.compareAndSet(false, true), "foldLeft already called!")
     require(null != current, "current == null which means the data was already read!")
     
@@ -136,13 +138,15 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   }
   
   private def foldLeft0[B](chunk: Future[Option[LinkedHttpContent]])(z: B, op: (B, ByteBuf) => B, p: Promise[B]): Unit = {
+    if (logger.isTraceEnabled) logger.trace("foldLeft0")
+    
     ctx.read()
     
     chunk.onComplete{ t: Try[Option[LinkedHttpContent]] =>
       t match {
-        case Failure(ex) =>             p.failure(ex)
+        case Failure(ex) => p.failure(ex)
         case Success(opt) => opt match {
-          case None =>                  p.success(z)
+          case None => p.success(z)
           case Some(linkedContent) =>
             // Wrap the op in a try in case it throws an exception
             val t = Try{ op(z, linkedContent.content()) }
@@ -156,10 +160,16 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
     }
   }
   
+  def discardContent(): Unit = {
+    foldLeft(){ (_, buf) => Unit }
+  }
+  
   def close(): Unit = try {
-    if (foldLeftCalled.compareAndSet(false, true)) { 
-      foldLeft(){ (_, buf) => Unit }
-    }
+    // This can throw an exception if foldLeft is also called
+    // in a concurrent thread at the same time but thats okay.
+    // What's NOT okay is trying to set foldLeftCalled from here
+    // since it's set in foldLeft()
+    if (!foldLeftCalled.get) discardContent()
   } catch {
     case ex: Exception => // ok
   }

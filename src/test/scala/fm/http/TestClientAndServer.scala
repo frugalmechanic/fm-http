@@ -26,12 +26,12 @@ import fm.lazyseq.LazySeq
 
 object TestClientAndServer {
   val port: Int = 1234
-  val requestCount: Int = 1000
+  val requestCount: Int = 10000
   
   import fm.http.client.HttpClient
   import fm.http.server._
   
-  val client: HttpClient = HttpClient(maxConnectionsPerHost = 1000, defaultResponseTimeout = 60.seconds)
+  val client: HttpClient = HttpClient(maxConnectionsPerHost = 1000, maxRequestQueuePerHost = requestCount, defaultResponseTimeout = 60.seconds)
   
   def startServer(): Unit = server
   def stopServer(): Unit = server.shutdown()
@@ -49,6 +49,7 @@ object TestClientAndServer {
 
   protected val unwrappedHandler: PartialFunction[Request, Response] = {
     case GET(simple"/${INT(code)}") => Response(Status(code), Status(code).msg)
+    case GET(simple"/close/${INT(code)}") => Response(Status(code), Headers("Connection" -> "close"), Status(code).msg)
     case GET("/data_one_mb")        => Response.Ok(makeLinkedHttpContent(OneMB))
     case GET("/data_hundred_mb")    => Response.Ok(makeLinkedHttpContent(OneMB * 100))
 
@@ -181,9 +182,29 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     }
   }
   
+  test(s"Async Requests ($requestCount Requests) - Connection: close") {
+    // Uses async non-blocking calls to make as many connections as possible to the server
+    val futures: Seq[Future[FullResponse]] = (1 to requestCount).map{ _ => getFullAsync("/close/200") }
+    val combined: Future[Seq[FullResponse]] = Future.sequence(futures)
+    Await.result(combined, 60.seconds).foreach { res: FullResponse =>
+      res.status.code should equal (200)
+      res.body should equal ("OK")
+    }
+  }
+  
   test(s"Async Requests with delayed response ($requestCount Requests)") {
     // Uses async non-blocking calls to make as many connections as possible to the server
     val futures: Seq[Future[FullResponse]] = (1 to requestCount).map{ _ => getFullAsync("/200?delay=1") }
+    val combined: Future[Seq[FullResponse]] = Future.sequence(futures)
+    Await.result(combined, 60.seconds).foreach { res: FullResponse =>
+      res.status.code should equal (200)
+      res.body should equal ("OK")
+    }
+  }
+  
+  test(s"Async Requests with delayed response ($requestCount Requests) - Connection: close") {
+    // Uses async non-blocking calls to make as many connections as possible to the server
+    val futures: Seq[Future[FullResponse]] = (1 to requestCount).map{ _ => getFullAsync("/close/200?delay=1") }
     val combined: Future[Seq[FullResponse]] = Future.sequence(futures)
     Await.result(combined, 60.seconds).foreach { res: FullResponse =>
       res.status.code should equal (200)

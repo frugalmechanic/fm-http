@@ -81,7 +81,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   /** This is called once when a client disconnects from our server OR we close the connection */
   override def channelInactive(ctx: ChannelHandlerContext): Unit = {
     trace("channelInactive")(ctx)
-    failPromises(new IOException("Channel Closed"))
+    failPromises(new IOException("Channel Closed"))(ctx)
     super.channelInactive(ctx)
   }
   
@@ -140,10 +140,14 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
     case content: HttpContent =>
       require(null != contentBuilder, "Received an HttpContent but the contentBuilder is null!")
       contentBuilder += content
+      
       if (contentBuilder.isDone) {
+        trace("channelReadImpl - contentBuilder.isDone")
+        
         contentBuilder = null
         
         if (isConnectionClose || null == pool) {
+          trace("channelReadImpl - ctx.close()")
           ctx.close()
         } else {
           pool.release(ctx.channel())
@@ -151,7 +155,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
       }
   }
   
-  def channelReadHttpResponse(nettyResponse: HttpResponse, content: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext): Unit = {
+  private def channelReadHttpResponse(nettyResponse: HttpResponse, content: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext): Unit = {
     require(null ne responsePromise, "No promise to receive the HttpResponse")
     
     val contentReader: LinkedHttpContentReader = LinkedHttpContentReader(need100Continue = false, content)
@@ -335,7 +339,8 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
     case _ => throw new Exception("Invalid obj: "+obj)
   }
   
-  def failPromises(cause: Throwable): Unit = {    
+  def failPromises(cause: Throwable)(implicit ctx: ChannelHandlerContext): Unit = {
+    trace(s"failPromises(socksInitPromise: $socksInitPromise, socksAuthPromise: $socksAuthPromise, socksConnectPromise: $socksConnectPromise, responsePromise: $responsePromise, contentBuilder: $contentBuilder)", cause)
     if (null != socksInitPromise) socksInitPromise.tryFailure(cause)
     if (null != socksAuthPromise) socksAuthPromise.tryFailure(cause)
     if (null != socksConnectPromise) socksConnectPromise.tryFailure(cause)
@@ -345,7 +350,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   
   override def exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable): Unit = {
     logger.error(s"$id - exceptionCaught - ${ctx.channel}", cause)
-    failPromises(cause)
+    failPromises(cause)(ctx)
     ctx.close()
   }
   

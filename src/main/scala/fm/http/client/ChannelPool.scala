@@ -31,11 +31,11 @@ object ChannelPool {
   private case class IdleChannel(channel: Channel, lastActivity: Long)
 }
 
-final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Channel], limit: Int, maxIdleMillis: Long)(implicit executionCtx: ExecutionContext) extends Logging {
+final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Channel], limit: Int, maxQueueSize: Int, maxIdleMillis: Long)(implicit executionCtx: ExecutionContext) extends Logging {
   import ChannelPool.IdleChannel
   
   private[this] var count: Int = 0
-  private[this] val waitingQueue: Queue[Promise[Channel]] = new LinkedBlockingQueue(1024 /* TODO: make this configurable */)
+  private[this] val waitingQueue: Queue[Promise[Channel]] = new LinkedBlockingQueue(maxQueueSize)
   private[this] val idleChannels: Deque[IdleChannel] = new ConcurrentLinkedDeque()
 
   def closeIdleChannels(): Unit = {
@@ -84,7 +84,7 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
       trace(s"checkout() - Queueing")
       val p: Promise[Channel] = Promise()
       if (!waitingQueue.offer(p)) {
-        val msg = s"ChannelPool ($label) waitingQueue is full!"
+        val msg: String = s"ChannelPool ($label) waitingQueue is full!"
         logger.error(msg)
         p.failure(new Exception(msg))
       }
