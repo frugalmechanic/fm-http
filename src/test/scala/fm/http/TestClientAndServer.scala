@@ -26,7 +26,7 @@ import fm.lazyseq.LazySeq
 
 object TestClientAndServer {
   val port: Int = 1234
-  val requestCount: Int = 10000
+  val requestCount: Int = 1000
   
   import fm.http.client.HttpClient
   import fm.http.server._
