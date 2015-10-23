@@ -74,6 +74,13 @@ final class FullResponse(response: HttpResponse, val body: String) extends Respo
   def close(): Unit = { }
 }
 
+/**
+ * Represents a response where we have the FULL body (as an array of bytes)
+ */
+final class FullBytesResponse(response: HttpResponse, val body: Array[Byte]) extends Response(response) {  
+  def close(): Unit = { }
+}
+
 object AsyncResponse {
   private def expectBodyContent(response: HttpResponse): Boolean = {
     val hasContentLength: Boolean = HttpHeaders.getContentLength(response, -1) > 0
@@ -120,6 +127,18 @@ final class AsyncResponse (response: HttpResponse, content: LinkedHttpContentRea
 
   def readBodyToString(maxLength: Long = Long.MaxValue, defaultCharset: Charset = null): Future[String] = {
     val f = body.map{ _.readToString(maxLength, detectCharset(defaultCharset)) }.getOrElse{ Future.successful("") }
+    f.onComplete{ case _ => close() }
+    f
+  }
+
+  def toFullBytesResponse(maxLength: Long = Long.MaxValue): Future[FullBytesResponse] = body match {
+    case None         => Future.successful(new FullBytesResponse(response, Array.empty[Byte]))
+    case Some(reader) => reader.readToByteArray(maxLength).map{ new FullBytesResponse(response, _) }
+  }
+
+  
+  def readBodyToByteArray(maxLength: Long = Long.MaxValue): Future[Array[Byte]] = {
+    val f = body.map{ _.readToByteArray(maxLength) }.getOrElse{ Future.successful(Array.empty[Byte]) }
     f.onComplete{ case _ => close() }
     f
   }

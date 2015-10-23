@@ -98,7 +98,12 @@ abstract class HttpClient extends Closeable {
    * Perform a GET request returning the FullResponse with a max length for the body
    */
   final def getFull(url: String, headers: Headers = defaultHeaders, maxLength: Long = defaultMaxLength, timeout: Duration = defaultResponseTimeout, defaultCharset: Charset = defaultCharset): Future[FullResponse] = getAsync(url, headers, timeout).flatMap{ _.toFullResponse(maxLength, defaultCharset) }
-  
+
+  /**
+   * Perform a GET request returning the FullBytesResponse with a max length for the bytes
+   */
+  final def getFullBytes(url: String, headers: Headers = defaultHeaders, maxLength: Long = defaultMaxLength, timeout: Duration = defaultResponseTimeout): Future[FullBytesResponse] = getAsync(url, headers, timeout).flatMap{ _.toFullBytesResponse(maxLength) }
+
   /**
    * Perform a POST request returning the FullResponse with a max length for the body
    */
