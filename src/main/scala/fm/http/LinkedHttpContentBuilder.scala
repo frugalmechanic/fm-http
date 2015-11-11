@@ -82,7 +82,7 @@ final case class LinkedHttpContentBuilder() extends Closeable {
   def +=(next: ByteBuf): this.type = +=(Option(next))
   
   def +=(next: Option[ByteBuf]): this.type = synchronized {
-    // done() can be called multiple times
+    // close() can be called multiple times
     if (done && next.isEmpty) return this
     
     require(!done, "Already Done!")

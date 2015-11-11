@@ -102,7 +102,7 @@ final case class DigestAuth(
      */
     base64EncryptionKey: String,
     /**
-     * How long if the nonce good for?  After this amount of seconds the client's browser
+     * How long is the nonce good for?  After this amount of seconds the client's browser
      * will automatically re-authenticate using the updated nonce from the server.
      */
     expirationSeconds: Int = 300 // 5 minutes
