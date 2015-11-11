@@ -16,7 +16,7 @@
 package fm.http.server
 
 import fm.common.Implicits._
-import java.util.regex.Pattern
+import java.util.regex.{Matcher, Pattern}
 import scala.util.matching.Regex
 import io.netty.handler.codec.http.HttpMethod
 
@@ -36,6 +36,20 @@ object RouteMatchers {
      *    
      * By default a variable will match everything up to the next / character.
      * If the * is used then the / character is also included.
+     * 
+     * Other simple regex operators are also now supported:
+     * 
+     * 		/path/$part/?  ==> Allow an optional trailing slash
+     * 		/path/$part.(gif|jpg) ==> Allows either gif or jpg extension
+     * 
+     * These are operators are supported:  ( ) | ?
+     * 
+     * The group operator will be re-written as a non-capturing group.
+     * 
+     * However those operators must be self-contained within each part of the string.
+     * This means you can't have something like:
+     * 
+     * 		/path(/$part)? ==> DOES NOT WORK - The grouping operator spans multiple parts of the string
      * 
      * TODO: make this work with query params.  e.g.:  /path/$var?foo=$foo
      */
@@ -60,6 +74,8 @@ object RouteMatchers {
     } 
   }
   
+  private val simpleRegexAllowedChars: Regex = """[^()|?]+""".r
+  
   private def makeSimpleRegex(sc: StringContext): Regex = {
     require(sc.parts.nonEmpty, "StringContext.parts is empty!")
     
@@ -67,13 +83,34 @@ object RouteMatchers {
       // If this a wildcard parameter?
       val isWild: Boolean = part.startsWith("*")
       
-      // Strip off the * if needed
-      val newPart: String = if (isWild) part.substring(1) else part
+      // Parens need to be balanced within each part
+      require(part.count{ _ === '(' } === part.count{ _ === ')' }, "Expected the number of '(' and ')' characters to match.  "+sc.parts)
+      
+      // ':' shouldn't be a valid character but someone might mistakenly try to use it as part of a regex.
+      require(!part.contains(':'), "Unexpected ':' character: "+sc.parts)
+      
+      // We don't currently support any of the regex special constructs that start with "(?"
+      require(!part.contains("(?"), "Unexpected '(?' pattern: "+sc.parts)
       
       // The pattern for the paramter
       val paramPattern: String = if (isWild) "(.+)" else "([^/]+)"
       
-      res+paramPattern+Pattern.quote(newPart)
+      val quotedPart: String = {
+        // Strip off the * if needed
+        var tmp = if (isWild) part.substring(1) else part
+        
+        require(!tmp.contains('*'), "Unexpected wildcard parameter: "+sc.parts)
+        
+        // Quote everything except for these chars: ( ) | ?
+        tmp = simpleRegexAllowedChars.replaceAllIn(tmp, (m: Regex.Match) => Matcher.quoteReplacement(Pattern.quote(m.matched)))
+        
+        // Make sure any groups are non-capturing
+        tmp = tmp.replace("(", "(?:")
+        
+        tmp
+      }
+      
+      res+paramPattern+quotedPart
     }.r
 
   }
@@ -105,6 +142,7 @@ object RouteMatchers {
   //
   object INT  { def unapply(x: String): Option[Int]  = x.toIntOption  }
   object LONG { def unapply(x: String): Option[Long] = x.toLongOption }
+  object BOOL { def unapply(x: String): Option[Boolean] = x.parseBoolean }
   
   val GET  = HttpMethodMatcher(HttpMethod.GET)
   val HEAD = HttpMethodMatcher(HttpMethod.HEAD)
