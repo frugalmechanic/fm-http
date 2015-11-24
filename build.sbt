@@ -6,9 +6,9 @@ version := "0.3.0-SNAPSHOT"
 
 description := "Async Http Client & Server for Scala"
 
-scalaVersion := "2.11.5"
+scalaVersion := "2.11.7"
 
-crossScalaVersions := Seq("2.10.4", "2.11.5")
+crossScalaVersions := Seq("2.10.6", "2.11.7")
 
 scalacOptions := Seq("-unchecked", "-deprecation", "-language:implicitConversions", "-feature", "-Xlint", "-optimise")
 
@@ -21,9 +21,9 @@ libraryDependencies ++= Seq(
 libraryDependencies ++= Seq(
   "io.netty" % "netty-all" % "4.0.31.Final",
   "com.jcraft" % "jzlib" % "1.1.3", // For Netty 4.X
-  "com.github.jnr" % "jnr-posix" % "3.0.1",             // POSIX Support (getpid and setssid) for the HttpServerApp
-  "joda-time" % "joda-time" % "2.7",
-  "org.joda" % "joda-convert" % "1.7",
+  "com.github.jnr" % "jnr-posix" % "3.0.1", // POSIX Support (getpid and setssid) for the HttpServerApp
+  "joda-time" % "joda-time" % "2.9.1",
+  "org.joda" % "joda-convert" % "1.8" // Required by joda-time when using Scala
   "org.slf4j" % "slf4j-api" % "1.7.10",
   "ch.qos.logback" % "logback-classic" % "1.1.2",
   "javax.mail" % "mail" % "1.4.1",
