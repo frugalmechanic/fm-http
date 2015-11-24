@@ -2,7 +2,7 @@ FMPublic
 
 name := "fm-http"
 
-version := "0.3.0-SNAPSHOT"
+version := "0.3.0"
 
 description := "Async Http Client & Server for Scala"
 
