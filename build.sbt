@@ -13,7 +13,7 @@ crossScalaVersions := Seq("2.10.6", "2.11.7")
 scalacOptions := Seq("-unchecked", "-deprecation", "-language:implicitConversions", "-feature", "-Xlint", "-optimise")
 
 libraryDependencies ++= Seq(
-  "com.frugalmechanic" %% "scala-optparse" % "1.1.1",
+  "com.frugalmechanic" %% "scala-optparse" % "1.1.2",
   "com.frugalmechanic" %% "fm-common" % "0.3.0",
   "com.frugalmechanic" %% "fm-lazyseq" % "0.3.0" % "test"
 )
