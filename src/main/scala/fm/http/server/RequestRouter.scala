@@ -77,15 +77,23 @@ trait RequestRouter {
 /**
  * Proxies to another RequestRouter
  */
-trait RequestRouterProxy extends RequestRouter {
+abstract class RequestRouterProxy extends RequestRouterBase {
   protected def self: RequestRouter
   
   def lookup(request: Request): Option[RequestHandler] = self.lookup(request)
   
-  override def beforeStartup() : Unit = self.beforeStartup()
-  override def afterStartup()  : Unit = self.afterStartup()
-  override def beforeShutdown(): Unit = self.beforeShutdown()
-  override def afterShutdown() : Unit = self.afterShutdown()
+  final override protected def beforeStartupImpl() : Unit = { beforeStartupLocal() ; self.beforeStartup() }
+  final override protected def afterStartupImpl()  : Unit = { afterStartupLocal()  ; self.afterStartup() }
+  final override protected def beforeShutdownImpl(): Unit = { beforeShutdownLocal(); self.beforeShutdown() }
+  final override protected def afterShutdownImpl() : Unit = { afterShutdownLocal() ; self.afterShutdown() }
+  
+  //
+  // Override these (if you need them)
+  //
+  protected def beforeStartupLocal() : Unit = {}
+  protected def afterStartupLocal()  : Unit = {}
+  protected def beforeShutdownLocal(): Unit = {} 
+  protected def afterShutdownLocal() : Unit = {}
 }
 
 /**
