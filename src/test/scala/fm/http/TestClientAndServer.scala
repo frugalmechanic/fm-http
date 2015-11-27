@@ -57,6 +57,16 @@ object TestClientAndServer {
     case GET("/latin1")                  => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", CharsetUtil.ISO_8859_1))
     case GET("/default-latin1")          => Response.Ok(Headers.empty, Unpooled.copiedBuffer("£", CharsetUtil.ISO_8859_1))
     case GET("/latin1-header-utf8-data") => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", CharsetUtil.UTF_8))
+    
+    case GET("/ok")                      => Response.Ok(Headers.empty, Unpooled.copiedBuffer("ok", CharsetUtil.ISO_8859_1))
+    case GET("/redirect")                => Response.Found("/ok")
+    
+    case GET("/redirect1")               => Response.Found("/redirect")
+    case GET("/redirect2")               => Response.MovedPermanently("/redirect1")
+    case GET("/redirect3")               => Response.Found(s"http://localhost:$port/redirect2")
+    case GET("/redirect4")               => Response.Found("/redirect3")
+    case GET("/redirect5")               => Response.Found("/redirect4")
+    case GET("/redirect6")               => Response.Found("/redirect5")
   }
   
   // This just cycles through all the ASCII printable chars starting at the space ' ' (20) and ending with '~' (126)
@@ -262,5 +272,33 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
 
   test("Content-Type: latin1 & UTF-8 Data") {
     getSync("/latin1-header-utf8-data", 200, "Â£") // new String("£".getBytes("UTF-8"), "latin1"))
+  }
+  
+  test("Redirect") {
+    getSync("/redirect", 200, "ok")
+  }
+  
+  test("Redirect 1") {
+    getSync("/redirect1", 200, "ok")
+  }
+  
+  test("Redirect 2") {
+    getSync("/redirect2", 200, "ok")
+  }
+  
+  test("Redirect 3") {
+    getSync("/redirect3", 200, "ok")
+  }
+  
+  test("Redirect 4") {
+    getSync("/redirect4", 200, "ok")
+  }
+  
+  test("Redirect 5") {
+    intercept[TooManyRedirectsException] { getSync("/redirect5", 200, "ok") }
+  }
+  
+  test("Redirect 6") {
+    intercept[TooManyRedirectsException] { getSync("/redirect6", 200, "ok") }
   }
 }

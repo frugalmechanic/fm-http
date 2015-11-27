@@ -48,7 +48,8 @@ object HttpClient {
     maxConnectionIdleDuration: FiniteDuration = 30.seconds,
     defaultResponseTimeout: Duration = 5.minutes, // The maximum time to wait for a Response
     defaultConnectTimeout: Duration = 30.seconds, // The maximum time to wait to connect to a server
-    defaultCharset: Charset = StandardCharsets.ISO_8859_1 // The default charset to use (if none is specified in the response) when converting responses to strings
+    defaultCharset: Charset = StandardCharsets.ISO_8859_1, // The default charset to use (if none is specified in the response) when converting responses to strings
+    maxRedirectCount: Int = 5  // The maximum number of 301/302 redirects to follow for a GET or HEAD request
   ): DefaultHttpClient = DefaultHttpClient(
     socksProxy = socksProxy,
     defaultMaxLength = defaultMaxLength,
@@ -59,7 +60,8 @@ object HttpClient {
     maxConnectionIdleDuration = maxConnectionIdleDuration,
     defaultResponseTimeout = defaultResponseTimeout,
     defaultConnectTimeout = defaultConnectTimeout,
-    defaultCharset = defaultCharset
+    defaultCharset = defaultCharset,
+    maxRedirectCount = maxRedirectCount
   )
   
   private val DefaultHeaders: ImmutableHeaders = {

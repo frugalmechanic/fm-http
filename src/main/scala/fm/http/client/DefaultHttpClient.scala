@@ -16,7 +16,7 @@
 package fm.http.client
 
 import fm.common.Implicits._
-import fm.common.{IP, Logging, URL}
+import fm.common.{IP, Logging, URI, URL}
 import fm.http._
 import fm.netty._
 
@@ -26,7 +26,7 @@ import io.netty.channel.group.{ChannelGroup, DefaultChannelGroup}
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.SocketChannel
 import io.netty.channel.socket.nio.NioSocketChannel
-import io.netty.handler.codec.http.{HttpClientCodec, HttpResponseStatus}
+import io.netty.handler.codec.http.{HttpClientCodec, HttpMethod, HttpResponseStatus}
 import io.netty.handler.codec.socks._
 import io.netty.handler.stream.ChunkedWriteHandler
 import io.netty.handler.ssl.SslHandler
@@ -148,17 +148,53 @@ final case class DefaultHttpClient(
   maxConnectionIdleDuration: FiniteDuration,
   defaultResponseTimeout: Duration, // The maximum time to wait for a Response
   defaultConnectTimeout: Duration, // The maximum time to wait to connect to a server
-  defaultCharset: Charset // The default charset to use (if none is specified in the response) when converting responses to strings
+  defaultCharset: Charset, // The default charset to use (if none is specified in the response) when converting responses to strings
+  maxRedirectCount: Int // The maximum number of 301/302 redirects to follow for a GET or HEAD request
 ) extends HttpClient with Logging {
   import DefaultHttpClient.{EndPoint, ThreadFactory, TimeoutTask, workerGroup}
   
   require(maxConnectionsPerHost > 0, "maxConnectionsPerHost must be > 0")
+  require(maxRedirectCount >= 0, "maxRedirectCount must be >= 0")
 
   /**
    * Execute a Request returning the AsyncResponse
    */
   def execute(r: Request, timeout: Duration): Future[AsyncResponse] = {
-    execute0(r.url, r, timeout)
+    if (r.method === HttpMethod.GET || r.method === HttpMethod.HEAD) {
+      // Handle 301/302 redirects
+      executeWithRedirects(r, timeout, 0)
+    } else {
+      // Don't handle redirects
+      execute0(r.url, r, timeout)  
+    }
+  }
+  
+  private def executeWithRedirects(r: Request, timeout: Duration, redirectCount: Int): Future[AsyncResponse] = {
+    if (redirectCount > maxRedirectCount) return Future.failed{ new TooManyRedirectsException(s"Too many redirects ($redirectCount) for request $r") }
+    
+    execute0(r.url, r, timeout).flatMap { response: AsyncResponse =>
+      if (response.status === Status.MOVED_PERMANENTLY || response.status === Status.FOUND) {
+        val location: Option[URI] = response.headers.location.flatMap{ URI.get }
+        
+        response.headers.location.flatMap{ URI.get }.map{ location: URI =>
+          
+          // Allow for a relative URL
+          val redirectURL: URL = if (location.scheme.isDefined) location.toURL() else location.copy(
+            scheme = location.scheme orElse r.url.scheme,
+            host = location.host orElse r.url.host,
+            port = location.port orElse (if (location.host.isDefined) None else r.url.port)
+          ).toURL
+          
+          response.close()
+          
+          val newRequest: Request = FullRequest(HttpMethod.GET, redirectURL, r.headers)
+          executeWithRedirects(newRequest, timeout, redirectCount + 1)
+        }.getOrElse{ Future.successful(response) }
+        
+      } else {
+        Future.successful(response)
+      }
+    }
   }
   
   def close(): Unit = {
