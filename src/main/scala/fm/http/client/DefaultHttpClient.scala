@@ -29,7 +29,7 @@ import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.codec.http.{HttpClientCodec, HttpMethod, HttpResponseStatus}
 import io.netty.handler.codec.socks._
 import io.netty.handler.stream.ChunkedWriteHandler
-import io.netty.handler.ssl.SslHandler
+import io.netty.handler.ssl.{SslContext, SslContextBuilder, SslHandler}
 import io.netty.util.concurrent.GlobalEventExecutor
 
 import java.util.concurrent.{ConcurrentHashMap, TimeoutException, TimeUnit}
@@ -244,12 +244,13 @@ final case class DefaultHttpClient(
     val scheme: String = url.scheme.getOrElse{ return Future.failed(new MalformedURLException("Missing Scheme")) }
     val host: String = url.host.getOrElse{ return Future.failed(new MalformedURLException("Missing Host")) }
     
-    if (scheme != "http") return Future.failed(new MalformedURLException("We only support 'http' as a scheme"))
-
-    val port: Int = url.port.getOrElse{ scheme match {
+    val defaultPort: Int = scheme match {
       case "http" => 80
       case "https" => 443
-    }}
+      case _ => return Future.failed(new MalformedURLException("We only support 'http' and 'https' as schemes"))
+    }
+
+    val port: Int = url.port.getOrElse{ defaultPort }
     
     val ssl: Boolean = scheme === "https"
     
@@ -308,9 +309,12 @@ final case class DefaultHttpClient(
   private def makeNewChannel(host: String, port: Int, ssl: Boolean, socksProxy: Option[(String, Int)] = None)(pool: ChannelPool): Future[Channel] = {
     val promise: Promise[Channel] = Promise()
     
+    val bootstrap: Bootstrap = if (ssl) httpsBootstrap(host, port) else httpBootstrap
+    
+    // TODO: need to test SSL when using a SOCKS Proxy.  Pretty sure it does not currently work.
     val connectFuture: ChannelFuture = socksProxy match {
-      case Some((socksHost, socksPort)) => client.connect(socksHost, socksPort)
-      case None                         => client.connect(host, port)
+      case Some((socksHost, socksPort)) => bootstrap.connect(socksHost, socksPort)
+      case None                         => bootstrap.connect(host, port)
     }
     
     val ch: Channel = connectFuture.channel()
@@ -385,11 +389,16 @@ final case class DefaultHttpClient(
   
   private[this] val allChannels: ChannelGroup = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)
   
-  private[this] val client: Bootstrap = makeBootstrap(ssl = false)
-  //private[this] val sslClient: Bootstrap = makeBootstrap(ssl = true)
+  // We can re-use a single Bootstrap instance for HTTP connections
+  private[this] val httpBootstrap: Bootstrap = makeBootstrap(false, "", 0)
   
-  private def makeBootstrap(ssl: Boolean): Bootstrap = {
-    val b = new Bootstrap
+  // We create Bootstrap instances for HTTPS on the fly since they include the host/port
+  private[this] def httpsBootstrap(host: String, port: Int): Bootstrap = makeBootstrap(true, host, port)
+  
+  private[this] val sslCtx: SslContext = SslContextBuilder.forClient().build()
+  
+  private def makeBootstrap(ssl: Boolean, host: String, port: Int): Bootstrap = {
+    val b: Bootstrap = new Bootstrap()
     b.group(workerGroup)
     b.channel(classOf[NioSocketChannel])
     b.option[java.lang.Boolean](ChannelOption.AUTO_READ, false) // ChannelHandlerContext.read() must be explicitly called when we want a message read
@@ -398,9 +407,7 @@ final case class DefaultHttpClient(
          val p: ChannelPipeline = ch.pipeline()
 
          if (ssl) {
-           // TODO: implement this
-           val engine: Nothing = ???
-           p.addLast("ssl", new SslHandler(engine))
+           p.addLast("ssl", new SslHandler(sslCtx.newEngine(ch.alloc(), host, port)))
          }
          
          p.addLast("httpcodec",     new HttpClientCodec())
