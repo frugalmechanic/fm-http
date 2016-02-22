@@ -18,6 +18,7 @@ package fm.http.server
 import fm.common.Implicits._
 import fm.http.{MimeTypes, MutableHeaders, Status}
 import java.io.File
+import java.net.URLDecoder
 import java.util.regex.{Pattern, Matcher}
 import io.netty.handler.codec.http.HttpMethod
 import org.joda.time.DateTime
@@ -75,11 +76,18 @@ trait StaticFileHandlerBase extends RequestRouter {
   final def lookup(request: Request): Option[RequestHandler] = {
     // We only handle GET and HEAD requests
     if (request.method != HttpMethod.GET && request.method != HttpMethod.HEAD) return None
-    
-    toFile(request.path).map{ resolveFile(request, _) }.flatMap { _ match {
+
+    // Look for both "File%20With%20Spaces.jpg" and "File With Spaces.jpg"
+    // TODO: use findMapped instead of map/filter, there is a bug in 2.11.7 with the current @inline version
+    //IndexedSeq[Option[File]](toFile(request.path), toFile(URLDecoder.decode(request.path, "UTF-8"))).flatten.findMapped[RequestHandler]{ f: File => resolveFile(request, f) match {
+    //  case NormalResolvedFile(file, expirationSeconds) => handleNormal(request, file, expirationSeconds)
+    //  case RedirectResolvedFile(location)              => Some(RequestHandler.constant(Response.Found(location)))
+    //}}
+
+    IndexedSeq[Option[File]](toFile(request.path), toFile(URLDecoder.decode(request.path, "UTF-8"))).flatten.map{ resolveFile(request, _) }.flatMap{ _ match {
       case NormalResolvedFile(file, expirationSeconds) => handleNormal(request, file, expirationSeconds)
       case RedirectResolvedFile(location)              => Some(RequestHandler.constant(Response.Found(location)))
-    }}
+    }}.headOption
   }
 
   /**
