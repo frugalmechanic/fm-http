@@ -19,7 +19,7 @@ package fm.http.server
  * Like a ThreadLocal except for Requests
  */
 trait RequestLocal[T] {
-  def get(implicit request: Request): Option[T] = synchronized {    
+  def get(implicit request: Request): Option[T] = synchronized {
     val res: AnyRef = request.requestLocalMap.get(this)
     
     if (null != res) return Some(res.asInstanceOf[T])
