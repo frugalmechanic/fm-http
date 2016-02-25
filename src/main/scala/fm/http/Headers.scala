@@ -66,6 +66,7 @@ object Headers {
     val X_REQUESTED_WITH: String = "X-Requested-With"
     val X_FORWARDED_FOR: String = "X-Forwarded-For"
     val X_FORWARDED_PROTO: String = "X-Forwarded-Proto"
+    val X_SSL: String = "X-SSL"
    
     //
     // Non-Standard Response Headers
@@ -176,6 +177,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   
   def getAll(name: String): Vector[String] = nettyHeaders.getAll(name).asScala.toVector
   
+  def getBool(name: String): Option[Boolean] = get(name).flatMap{ _.parseBoolean }
   def getDate(name: String): Option[DateTime] = get(name).flatMap{ parseDate }
   def getInt(name: String): Option[Int] = get(name).flatMap{ _.toIntOption }
   def getLong(name: String): Option[Long] = get(name).flatMap{ _.toLongOption }
@@ -290,6 +292,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   // Non-Standard
   //
   def dnt: Option[String] = get(NonStandardNames.DNT)
+  def xSSL: Option[Boolean] = getBool(NonStandardNames.X_SSL)
   def xRequestedWith: Option[String] = get(NonStandardNames.X_REQUESTED_WITH)
   def xForwardedFor: Option[String] = get(NonStandardNames.X_FORWARDED_FOR)
   def xForwardedProto: Option[String] = get(NonStandardNames.X_FORWARDED_PROTO)
