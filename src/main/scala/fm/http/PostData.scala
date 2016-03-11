@@ -15,11 +15,12 @@
  */
 package fm.http
 
+import fm.common.Implicits._
+import fm.common.{InputStreamResource, Logging, MultiUseResource, Resource}
 import java.io.{File, InputStream}
 import java.nio.charset.Charset
 import io.netty.buffer.ByteBufInputStream
 import io.netty.handler.codec.http.{multipart => netty}
-import fm.common.{InputStreamResource, Logging, MultiUseResource, Resource}
 
 object PostData extends Logging {
   def apply(data: netty.InterfaceHttpData): PostData = data match {
@@ -73,9 +74,9 @@ sealed trait PostAttribute extends PostData {
 sealed trait FileUpload extends PostData {
   protected def self: netty.FileUpload
   
-  final def fileName: Option[String] = Option(self.getFilename())
-  final def contentType: Option[String] = Option(self.getContentType())
-  final def contentTransferEncoding: Option[String] = Option(self.getContentTransferEncoding())
+  final def fileName: Option[String] = self.getFilename().toBlankOption
+  final def contentType: Option[String] = self.getContentType().toBlankOption
+  final def contentTransferEncoding: Option[String] = self.getContentTransferEncoding().toBlankOption
 }
 
 final case class MemoryPostAttribute(protected val self: netty.Attribute) extends PostAttribute with MemoryPostData {
