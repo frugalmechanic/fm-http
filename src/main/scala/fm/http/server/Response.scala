@@ -64,6 +64,8 @@ object Response {
 sealed trait Response extends Message {
   def status: Status
   def headers: Headers
+
+  def withHeaders(headerValues: (String, Any)*): Response
 }
 
 /**
@@ -75,6 +77,8 @@ final case class FullResponse(status: Status, headers: Headers = Headers.empty, 
     r.headers().add(headers.nettyHeaders)
     r
   }
+
+  def withHeaders(headerValues: (String, Any)*): FullResponse = copy(headers = headers.withHeaders(headerValues:_*))
 }
 
 /**
@@ -86,6 +90,8 @@ final case class AsyncResponse(status: Status, headers: Headers, head: LinkedHtt
     r.headers().add(headers.nettyHeaders)
     r
   }
+
+  def withHeaders(headerValues: (String, Any)*): AsyncResponse = copy(headers = headers.withHeaders(headerValues:_*))
 }
 
 /**
@@ -97,6 +103,8 @@ final case class FileResponse(status: Status, headers: Headers, file: File) exte
     r.headers().add(headers.nettyHeaders)
     r
   }
+
+  def withHeaders(headerValues: (String, Any)*): FileResponse = copy(headers = headers.withHeaders(headerValues:_*))
 }
 
 /**
@@ -108,4 +116,6 @@ final case class InputStreamResponse(status: Status, headers: Headers, input: In
     r.headers().add(headers.nettyHeaders)
     r
   }
+
+  def withHeaders(headerValues: (String, Any)*): InputStreamResponse = copy(headers = headers.withHeaders(headerValues:_*))
 }

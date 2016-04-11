@@ -15,7 +15,7 @@
  */
 package fm.http.server
 
-import fm.common.{IP, Logging, QueryParams}
+import fm.common.{IP, Logging, QueryParams, UUID}
 import fm.common.Implicits._
 import fm.http._
 import java.io.Closeable
@@ -51,7 +51,10 @@ final class Request (
   
   // Note - This is ONLY accessed via RequestLocal and synchronization is done there
   private[server] lazy val requestLocalMap: IdentityHashMap[RequestLocal[_],AnyRef] = new IdentityHashMap()
-  
+
+  // Generate a unique request id that can be referenced, lazy to avoid generating it if we don't need/use it
+  lazy val id: UUID = UUID()
+
   /**
    * This future is completed when the request has been fully processed
    */
