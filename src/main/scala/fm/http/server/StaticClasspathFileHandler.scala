@@ -33,13 +33,15 @@ object StaticClasspathFileHandler {
   def apply(root: String, devMode: Boolean, classLoader: ClassLoader): StaticClasspathFileHandler = apply(new File(root), devMode, classLoader)
   def apply(root: File, devMode: Boolean): StaticClasspathFileHandler = apply(root, devMode, defaultClassLoader)
   
+  def apply(root: File, devMode: Boolean, classLoader: ClassLoader): StaticClasspathFileHandler = apply(Seq(root), devMode, classLoader)
+  
   private def defaultClassLoader: ClassLoader = {
     val cl: ClassLoader = Thread.currentThread().getContextClassLoader()
     if (null != cl) cl else getClass.getClassLoader()
   }
 }
 
-final case class StaticClasspathFileHandler(root: File, devMode: Boolean, classLoader: ClassLoader) extends StaticFileHandlerBase with Logging {
+final case class StaticClasspathFileHandler(roots: Seq[File], devMode: Boolean, classLoader: ClassLoader) extends StaticFileHandlerBase with Logging {
   
   private def getClasspathResource(f: File): Option[URL] = {
     if (null == f) return None
@@ -58,6 +60,8 @@ final case class StaticClasspathFileHandler(root: File, devMode: Boolean, classL
   protected def isValidFile(f: File): Boolean = ClassUtil.classpathFileExists(f)
   
   protected def isValidDir(f: File): Boolean = ClassUtil.classpathDirExists(f)
+  
+  protected def lastModified(f: File): Long = ClassUtil.classpathLastModified(f)
   
   protected def handleNormal(request: Request, f: File, expirationSeconds: Int): Option[RequestHandler] = {
     val url: URL = getClasspathResource(f).getOrElse{ return None }

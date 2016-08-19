@@ -32,17 +32,26 @@ object StaticFileHandler {
 
   private[this] val timestampFormat: DateTimeFormatter = DateTimeFormat.forPattern("yyyyMMddHHmmss")
   
-  def formattedTimestamp(f: File): String = new LocalDateTime(f.lastModified()).toString(timestampFormat)
+  def formattedTimestamp(f: File): String = formattedTimestamp(f.lastModified())
+  def formattedTimestamp(millis: Long): String = new LocalDateTime(millis).toString(timestampFormat)
 
   def apply(root: String): StaticFileHandler = apply(root, false)
+  def apply(root: String, devMode: Boolean): StaticFileHandler = apply(new File(root), devMode)
   
-  def apply(root: String, devMode: Boolean): StaticFileHandler = StaticFileHandler(new File(root), devMode)
+  def apply(roots: Seq[String]): StaticFileHandler = apply(roots, false)
+  def apply(roots: Seq[String], devMode: Boolean)(implicit dummy: DummyImplicit): StaticFileHandler = apply(roots.map{ new File(_) }, devMode)
+  
+  def apply(root: File, devMode: Boolean): StaticFileHandler = apply(Seq(root), devMode)
+  
+  def apply(roots: Seq[File])(implicit dummy: DummyImplicit): StaticFileHandler = apply(roots, false)
 }
 
-final case class StaticFileHandler(root: File, devMode: Boolean) extends StaticFileHandlerBase {
+final case class StaticFileHandler(roots: Seq[File], devMode: Boolean) extends StaticFileHandlerBase {
   protected def isValidFile(f: File): Boolean = isFileSystemFile(f)
   
   protected def isValidDir(f: File): Boolean = isFileSystemDir(f)
+  
+  protected def lastModified(f: File): Long = f.lastModified()
   
   protected def handleNormal(request: Request, f: File, expirationSeconds: Int): Option[RequestHandler] = handleFileSystemFile(request, f, expirationSeconds)
 }

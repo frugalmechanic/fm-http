@@ -25,11 +25,15 @@ import org.joda.time.DateTime
 trait StaticFileHandlerBase extends RequestRouter {
   import StaticFileHandler.{expirationInSeconds, formattedTimestamp, indexFiles, versionedExprationInSeconds}
   
-  protected sealed trait ResolvedFile
-  protected case class NormalResolvedFile(file: File, expirationSeconds: Int) extends ResolvedFile
-  protected case class RedirectResolvedFile(location: String) extends ResolvedFile
+  private val HasTimestampPattern: Pattern = Pattern.compile(""".+\.[0-9]+\.\w+$""")
+  private val HasTimestampOrHashPattern: Pattern = Pattern.compile(""".+\.[0-9a-zA-Z]{8,}+\.\w+$""")
   
-  protected def root: File
+  protected sealed trait ResolvedFile { def file: File }
+  protected case class NormalResolvedFile(file: File, expirationSeconds: Int) extends ResolvedFile
+  protected case class RedirectResolvedFile(file: File, location: String) extends ResolvedFile
+  
+  /** Root paths to search (in order) to find a matching file */
+  protected def roots: Seq[File]
   
   /** Is this a valid file we can serve? */
   protected def isValidFile(f: File): Boolean
@@ -41,7 +45,40 @@ trait StaticFileHandlerBase extends RequestRouter {
    */
   protected def isValidDir(f: File): Boolean
   
+  /**
+   * Last modified timestamp for a file in milliseconds
+   */
+  protected def lastModified(f: File): Long
+  
   protected def handleNormal(request: Request, f: File, expirationSeconds: Int): Option[RequestHandler]
+  
+  /**
+   * Given a file path return the timestamped version of the path.
+   * 
+   * Note: If the file doesn't exist then the path is returned unmodified
+   * 
+   * e.g. Given "/js/foo.js" return something like "/js/foo.1470690999454.js" (assuming the file exists)
+   */
+  final def timestampedPath(path: String): String = {
+    // If there is already a timestamp then don't modify it
+    if (path.matches(HasTimestampPattern) || !path.contains('.')) return path
+    
+    // Otherwise we attempt to resolve the file and add the timestamp
+    val pathWithTimestamp: Option[String] = for {
+      resolved: ResolvedFile <- findResolvedFile(path)
+      file: File = resolved.file
+      timestamp: Long = lastModified(file)
+      if timestamp > 0
+      formattedTimestamp: String = StaticFileHandler.formattedTimestamp(timestamp)
+    } yield {
+      val dotIdx: Int = path.lastIndexOf('.')
+      val prefix: String = path.substring(0, dotIdx)
+      val suffix: String = path.substring(dotIdx+1)
+      s"$prefix.$formattedTimestamp.$suffix"
+    }
+    
+    pathWithTimestamp.getOrElse{ path }
+  }
   
   final protected def isFileSystemFile(f: File): Boolean = null != f && f.isFile && f.canRead && !f.isHidden
   
@@ -76,25 +113,51 @@ trait StaticFileHandlerBase extends RequestRouter {
     // We only handle GET and HEAD requests
     if (request.method != HttpMethod.GET && request.method != HttpMethod.HEAD) return None
     
-    toFile(request.path).map{ resolveFile(request, _) }.flatMap { _ match {
+    val resolved: Option[ResolvedFile] = findResolvedFile(request)
+    
+    if (resolved.isEmpty) None
+    else resolved.get match {
       case NormalResolvedFile(file, expirationSeconds) => handleNormal(request, file, expirationSeconds)
-      case RedirectResolvedFile(location)              => Some(RequestHandler.constant(Response.Found(location)))
-    }}
+      case RedirectResolvedFile(file, location)        => Some(RequestHandler.constant(Response.Found(location)))
+    }
+  }
+  
+  private def findResolvedFile(request: Request): Option[ResolvedFile] = findResolvedFile(request.path, request.uri)
+  private def findResolvedFile(path: String): Option[ResolvedFile] = findResolvedFile(path, path)
+  
+  /**
+   * Checks each root (in order) attempting to resolve the path to a ResolvedFile
+   */
+  private def findResolvedFile(path: String, uri: String): Option[ResolvedFile] = {
+    if (path.isBlank) return None
+    
+    val parts: Array[String] = path.split('/')
+    
+    // We don't allow dotfiles (e.g. ".foo") or stuff like "." or ".."
+    if (parts.exists{ p: String => p.startsWith(".") }) return None
+
+    roots.findMapped{ root: File =>
+      val f: File = new File(root, parts.mkString(File.separator))
+      tryResolveFile(path, uri, f)
+    }
   }
 
+  private def tryResolveFile(request: Request, f: File): Option[ResolvedFile] = tryResolveFile(request.path, request.uri, f)
+  private def tryResolveFile(path: String, f: File): Option[ResolvedFile] = tryResolveFile(path, path, f)
+  
   /**
    * Given a file check for possible alternates if it's not a valid file:
    *  - Index File if it's a directory
    *  - Timestamped suffix:  /javascripts/cached/all.20110614092900.js
    */
-  private def resolveFile(request: Request, f: File): ResolvedFile = {
+  private def tryResolveFile(path: String, uri: String, f: File): Option[ResolvedFile] = {
     // The file is already valid
     if (isValidFile(f)) {
       // Does it look like a versioned file?  name.{timestamp|md5|sha1}.ext
       // This will get triggered for the SmartSprite images that look like: /images/sprites/common.43babe75d882962f82f24ed81ec179cc.png
-      val isVersioned: Boolean = f.getName.matches(""".+\.[0-9a-zA-Z]{8,}+\.\w+$""")
+      val isVersioned: Boolean = f.getName.matches(HasTimestampOrHashPattern)
       val expiration: Int = if (isVersioned) versionedExprationInSeconds else expirationInSeconds
-      return NormalResolvedFile(f, expiration)
+      return Some(NormalResolvedFile(f, expiration))
     }
 
     // Directory -- Check for index files
@@ -104,18 +167,18 @@ trait StaticFileHandlerBase extends RequestRouter {
 
       if (isValidFile(idxFile)) {
         // If we are serving up an index file make sure we have a trailing slash on the request
-        if(!request.path.endsWith("/")) {
-          val location: String = request.uri.replaceFirst(Pattern.quote(request.path), Matcher.quoteReplacement(request.path+"/"))
-          return RedirectResolvedFile(location)
+        if (!path.endsWith("/")) {
+          val location: String = uri.replaceFirst(Pattern.quote(path), Matcher.quoteReplacement(path+"/"))
+          return Some(RedirectResolvedFile(idxFile, location))
         }
 
-        return NormalResolvedFile(idxFile, expirationInSeconds)
+        return Some(NormalResolvedFile(idxFile, expirationInSeconds))
       }
     }
 
     // Timestamped/MD5'd resource file:  e.g. /javascripts/cached/all.20110614092900.js
     // TODO: make this work with MD5/SHA1
-    if (null != f && f.getName.matches(""".+\.[0-9]+\.\w+$""")) {
+    if (null != f && f.getName.matches(HasTimestampPattern)) {
       val splitParts: Array[String] = f.getAbsolutePath.split('.')
       val timestampIdx: Int = splitParts.length-2
 
@@ -137,29 +200,15 @@ trait StaticFileHandlerBase extends RequestRouter {
         if (timestamp != expectedTimestamp) {
 
           // TODO: fix this up since it isn't very fullproof replacement...
-          val location: String = request.uri.replaceFirst(Pattern.quote("."+timestamp+"."), Matcher.quoteReplacement("."+expectedTimestamp+"."))
+          val location: String = uri.replaceFirst(Pattern.quote("."+timestamp+"."), Matcher.quoteReplacement("."+expectedTimestamp+"."))
 
-          return RedirectResolvedFile(location)
+          return Some(RedirectResolvedFile(newFile, location))
         }
         
-        return NormalResolvedFile(newFile, versionedExprationInSeconds)
+        return Some(NormalResolvedFile(newFile, versionedExprationInSeconds))
       }
     }
 
-    NormalResolvedFile(f, -1)
-  }
-  
-  /**
-   * Convert a request.path into a File
-   */
-  private def toFile(path: String): Option[File] = {
-    if (path.isBlank) return None
-    
-    val parts: Array[String] = path.split('/')
-    
-    // We don't allow dotfiles (e.g. ".foo") or stuff like "." or ".."
-    if (parts.exists{ p: String => p.startsWith(".") }) return None
-
-    Some(new File(root, parts.mkString(File.separator)))
+    None
   }
 }
