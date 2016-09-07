@@ -68,10 +68,8 @@ final case class HttpServer (port: Int = 8080, router: RequestRouter, authKey: S
   def enablePing():  Unit = controlHandler.enabled = true
   def disablePing(): Unit = controlHandler.enabled = false
   
-  //val bossGroup: NioEventLoopGroup = new NioEventLoopGroup(0, new ThreadFactory("netty-boss", daemon = false))
-  //val workerGroup: NioEventLoopGroup = new NioEventLoopGroup(0, new ThreadFactory("netty-worker", daemon = false))
-  private[this] val bossGroup: NioEventLoopGroup = new NioEventLoopGroup()
-  private[this] val workerGroup: NioEventLoopGroup = new NioEventLoopGroup()
+  private[this] val bossGroup: NioEventLoopGroup = new NioEventLoopGroup(0, new HttpServer.ThreadFactory("fm-http-server-boss", daemon = false))
+  private[this] val workerGroup: NioEventLoopGroup = new NioEventLoopGroup(0, new HttpServer.ThreadFactory("fm-http-server-worker", daemon = false))
   
   /** A flag to indicate that we've already called the shutdown() method to avoid calling it twice */
   private[this] val isShuttingDown: AtomicBoolean = new AtomicBoolean(false)

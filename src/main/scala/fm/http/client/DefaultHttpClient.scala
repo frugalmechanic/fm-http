@@ -54,7 +54,7 @@ object DefaultHttpClient extends Logging {
 //    workerGroup.shutdownGracefully(1, 15, TimeUnit.SECONDS)
 //  }
   
-  private val workerGroup: NioEventLoopGroup = new NioEventLoopGroup(0, new ThreadFactory("http-client-worker", daemon=true))
+  private val workerGroup: NioEventLoopGroup = new NioEventLoopGroup(0, new ThreadFactory("fm-http-client-worker", daemon = true))
     
   /**
    * Simple ThreadFactory that allows us to name the threads something reasonable and set the daemon flag
@@ -98,7 +98,7 @@ object DefaultHttpClient extends Logging {
     timer.schedule(new ConnectionIdleTask(new WeakReference(client)), IdleCheckDuration)
   }
   
-  private class ConnectionIdleTask(ref: WeakReference[DefaultHttpClient]) extends Runnable {    
+  private class ConnectionIdleTask(ref: WeakReference[DefaultHttpClient]) extends Runnable {
     def run(): Unit = {
       val client: DefaultHttpClient = ref.get()
       if (null != client) {
