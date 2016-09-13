@@ -122,7 +122,12 @@ abstract class HttpClient extends Closeable {
    * Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies
    */
   final def postAsync(url: String, body: String, headers: Headers = defaultHeaders, timeout: Duration = defaultResponseTimeout): Future[AsyncResponse] = execute(Request.Post(url, headers, body), timeout)
-  
+
+  /**
+   * Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies, using a Byte array as the post body
+   */
+  final def postBytesAsync(url: String, array: Array[Byte], headers: Headers = defaultHeaders, timeout: Duration = defaultResponseTimeout): Future[AsyncResponse] = execute(Request.Post(url, headers, array), timeout)
+
   /**
    * Return an HttpClient that will use Basic auth for any calls made by it
    */
