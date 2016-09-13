@@ -149,7 +149,8 @@ final case class DefaultHttpClient(
   defaultResponseTimeout: Duration, // The maximum time to wait for a Response
   defaultConnectTimeout: Duration, // The maximum time to wait to connect to a server
   defaultCharset: Charset, // The default charset to use (if none is specified in the response) when converting responses to strings
-  maxRedirectCount: Int // The maximum number of 301/302 redirects to follow for a GET or HEAD request
+  maxRedirectCount: Int, // The maximum number of 301/302 redirects to follow for a GET or HEAD request
+  followRedirects: Boolean
 ) extends HttpClient with Logging {
   import DefaultHttpClient.{EndPoint, ThreadFactory, TimeoutTask, workerGroup}
   
@@ -160,7 +161,7 @@ final case class DefaultHttpClient(
    * Execute a Request returning the AsyncResponse
    */
   def execute(r: Request, timeout: Duration): Future[AsyncResponse] = {
-    if (r.method === HttpMethod.GET || r.method === HttpMethod.HEAD) {
+    if ((r.method === HttpMethod.GET || r.method === HttpMethod.HEAD) && followRedirects) {
       // Handle 301/302 redirects
       executeWithRedirects(r, timeout, 0)
     } else {
