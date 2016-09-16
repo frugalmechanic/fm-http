@@ -40,6 +40,7 @@ object MimeTypes {
   val SVG         = "image/svg+xml"
   val PDF         = "application/pdf"
   val BINARY      = "application/octet-stream"
+  val WOFF        = "application/font-woff"
 
   // type -> extensions
   val mimeTypeToExtension = Vector[(String,Seq[String])](
@@ -60,7 +61,9 @@ object MimeTypes {
     ZIP         -> "zip",
     X_COMPONENT -> "htc",
     SVG         -> "svg",
-    PDF         -> "pdf"
+    PDF         -> "pdf",
+    WOFF        -> "woff",
+    BINARY      -> "ttf"
   ).toUniqueHashMap
 
   val compressable: Vector[String] = Vector(HTML,JAVASCRIPT,JSON,CSS,CSV,PLAIN,XML,X_COMPONENT,RSS,SVG)
