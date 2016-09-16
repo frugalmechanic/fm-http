@@ -32,6 +32,7 @@ object TestClientAndServer {
   import fm.http.server._
   
   val client: HttpClient = HttpClient(maxConnectionsPerHost = 1000, maxRequestQueuePerHost = requestCount, defaultResponseTimeout = 60.seconds)
+  val clientNoFollowRedirects: HttpClient = HttpClient(maxConnectionsPerHost = 1000, maxRequestQueuePerHost = requestCount, defaultResponseTimeout = 60.seconds, followRedirects = false)
   
   def startServer(): Unit = server
   def stopServer(): Unit = server.shutdown()
@@ -111,14 +112,15 @@ object TestClientAndServer {
         val p = Promise[Response]()
         server.timer.schedule(delay.seconds){ p.success(f) }
         p.future
-      case None        => Future.successful(f) 
+      case None =>
+        Future.successful(f) 
     }
   }  
 }
 
 // TODO: split this into a "stress test" mode and a "normal" unit testing mode
 final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAfterAll {
-  import TestClientAndServer.{charForIdx, client, requestCount}
+  import TestClientAndServer.{charForIdx, client, clientNoFollowRedirects, port, requestCount}
   import client.executionContext
   import fm.http.client._
   
@@ -137,20 +139,20 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     s"http://127.0.0.1:${TestClientAndServer.port}"+path
   }
   
-  private def getSync(path: String, expectedCode: Int, expectedBody: String): Unit = TestHelpers.withCallerInfo{
-    val f: Future[FullResponse] = getFullAsync(path)
-    val res: FullResponse = Await.result(f, 5.seconds)
+  private def getSync(path: String, expectedCode: Int, expectedBody: String, httpClient: HttpClient = client): Unit = TestHelpers.withCallerInfo{
+    val f: Future[FullStringResponse] = getFullStringAsync(path, httpClient)
+    val res: FullStringResponse = Await.result(f, 5.seconds)
     res.status.code should equal (expectedCode)
     res.body should equal (expectedBody)
   }
   
-  private def getFullAsync(path: String): Future[FullResponse] = client.getFull(makeUrl(path))
+  private def getFullStringAsync(path: String, httpClient: HttpClient = client): Future[FullStringResponse] = httpClient.getFullString(makeUrl(path))
   
   private def getAndVerifyData(path: String): Future[Boolean] = {
     client.getAsync(makeUrl(path)).flatMap{ response: AsyncResponse =>
       response.status.code should equal (200)
       response.body.get.foldLeft(0L){ (idx, buf) =>
-        var i = 0
+        var i: Int = 0
         while(i < buf.readableBytes()) {
           val char: Char = buf.getByte(i).toChar
           val expected: Char = charForIdx(idx + i)
@@ -184,9 +186,9 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   
   test(s"Async Requests ($requestCount Requests)") {
     // Uses async non-blocking calls to make as many connections as possible to the server
-    val futures: Seq[Future[FullResponse]] = (1 to requestCount).map{ _ => getFullAsync("/200") }
-    val combined: Future[Seq[FullResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullResponse =>
+    val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => getFullStringAsync("/200") }
+    val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
+    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
       res.status.code should equal (200)
       res.body should equal ("OK")
     }
@@ -194,9 +196,9 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   
   test(s"Async Requests ($requestCount Requests) - Connection: close") {
     // Uses async non-blocking calls to make as many connections as possible to the server
-    val futures: Seq[Future[FullResponse]] = (1 to requestCount).map{ _ => getFullAsync("/close/200") }
-    val combined: Future[Seq[FullResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullResponse =>
+    val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => getFullStringAsync("/close/200") }
+    val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
+    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
       res.status.code should equal (200)
       res.body should equal ("OK")
     }
@@ -204,9 +206,9 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   
   test(s"Async Requests with delayed response ($requestCount Requests)") {
     // Uses async non-blocking calls to make as many connections as possible to the server
-    val futures: Seq[Future[FullResponse]] = (1 to requestCount).map{ _ => getFullAsync("/200?delay=1") }
-    val combined: Future[Seq[FullResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullResponse =>
+    val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => getFullStringAsync("/200?delay=1") }
+    val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
+    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
       res.status.code should equal (200)
       res.body should equal ("OK")
     }
@@ -214,9 +216,9 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   
   test(s"Async Requests with delayed response ($requestCount Requests) - Connection: close") {
     // Uses async non-blocking calls to make as many connections as possible to the server
-    val futures: Seq[Future[FullResponse]] = (1 to requestCount).map{ _ => getFullAsync("/close/200?delay=1") }
-    val combined: Future[Seq[FullResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullResponse =>
+    val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => getFullStringAsync("/close/200?delay=1") }
+    val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
+    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
       res.status.code should equal (200)
       res.body should equal ("OK")
     }
@@ -300,5 +302,33 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   
   test("Redirect 6") {
     intercept[TooManyRedirectsException] { getSync("/redirect6", 200, "ok") }
+  }
+  
+  test("Redirect - noFollowRedirects") {
+    getSync("/redirect", 302, "/ok", clientNoFollowRedirects)
+  }
+  
+  test("Redirect 1 - noFollowRedirects") {
+    getSync("/redirect1", 302, "/redirect", clientNoFollowRedirects)
+  }
+  
+  test("Redirect 2 - noFollowRedirects") {
+    getSync("/redirect2", 301, "/redirect1", clientNoFollowRedirects)
+  }
+  
+  test("Redirect 3 - noFollowRedirects") {
+    getSync("/redirect3", 302, s"http://localhost:$port/redirect2", clientNoFollowRedirects)
+  }
+  
+  test("Redirect 4 - noFollowRedirects") {
+    getSync("/redirect4", 302, "/redirect3", clientNoFollowRedirects)
+  }
+  
+  test("Redirect 5 - noFollowRedirects") {
+    getSync("/redirect5", 302, "/redirect4", clientNoFollowRedirects)
+  }
+  
+  test("Redirect 6 - noFollowRedirects") {
+    getSync("/redirect6", 302, "/redirect5", clientNoFollowRedirects)
   }
 }
