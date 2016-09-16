@@ -70,14 +70,14 @@ sealed abstract class Response(response: HttpResponse) extends Closeable {
 /**
  * Represents a response where we have the FULL body (as a string)
  */
-final class FullResponse(response: HttpResponse, val body: String) extends Response(response) {  
+final class FullStringResponse(response: HttpResponse, val body: String) extends Response(response) {
   def close(): Unit = { }
 }
 
 /**
  * Represents a response where we have the FULL body (as an array of bytes)
  */
-final class FullBytesResponse(response: HttpResponse, val body: Array[Byte]) extends Response(response) {  
+final class FullResponse(response: HttpResponse, val body: Array[Byte]) extends Response(response) {
   def close(): Unit = { }
 }
 
@@ -120,20 +120,20 @@ final class AsyncResponse (response: HttpResponse, content: LinkedHttpContentRea
   
   val body: Option[LinkedHttpContentReader] = if (hasBody) Some(content) else None
 
-  def toFullResponse(maxLength: Long = Long.MaxValue, defaultCharset: Charset = null): Future[FullResponse] = body match {
-    case None         => Future.successful(new FullResponse(response, ""))
-    case Some(reader) => reader.readToString(maxLength, detectCharset(defaultCharset)).map{ new FullResponse(response, _) }
+  def toFullStringResponse(maxLength: Long = Long.MaxValue, defaultCharset: Charset = null): Future[FullStringResponse] = body match {
+    case None         => Future.successful(new FullStringResponse(response, ""))
+    case Some(reader) => reader.readToString(maxLength, detectCharset(defaultCharset)).map{ new FullStringResponse(response, _) }
   }
 
   def readBodyToString(maxLength: Long = Long.MaxValue, defaultCharset: Charset = null): Future[String] = {
-    val f = body.map{ _.readToString(maxLength, detectCharset(defaultCharset)) }.getOrElse{ Future.successful("") }
+    val f: Future[String] = body.map{ _.readToString(maxLength, detectCharset(defaultCharset)) }.getOrElse{ Future.successful("") }
     f.onComplete{ case _ => close() }
     f
   }
 
-  def toFullBytesResponse(maxLength: Long = Long.MaxValue): Future[FullBytesResponse] = body match {
-    case None         => Future.successful(new FullBytesResponse(response, Array.empty[Byte]))
-    case Some(reader) => reader.readToByteArray(maxLength).map{ new FullBytesResponse(response, _) }
+  def toFullResponse(maxLength: Long = Long.MaxValue): Future[FullResponse] = body match {
+    case None         => Future.successful(new FullResponse(response, Array.empty[Byte]))
+    case Some(reader) => reader.readToByteArray(maxLength).map{ new FullResponse(response, _) }
   }
 
   
