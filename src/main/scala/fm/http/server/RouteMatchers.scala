@@ -129,9 +129,13 @@ object RouteMatchers {
       res+ch+part
     }.r
   }
-  
+
   final case class HttpMethodMatcher(method: HttpMethod) {
-    def unapply(request: Request): Option[String] = if (request.method === method) Some(request.path) else None
+    def unapply(request: Request): Option[String] = if (method === request.method) Some(request.path) else None
+  }
+
+  final case class HttpMethodsMatcher(methods: HttpMethod*) {
+    def unapply(request: Request): Option[String] = if (methods.exists{ _ === request.method }) Some(request.path) else None
   }
   
   implicit def StringToDefaultHttpMethodMatcher(s: String): HttpMethodMatcher = GET
@@ -144,8 +148,9 @@ object RouteMatchers {
   object LONG { def unapply(x: String): Option[Long] = x.toLongOption }
   object BOOL { def unapply(x: String): Option[Boolean] = x.parseBoolean }
   
-  val GET  = HttpMethodMatcher(HttpMethod.GET)
-  val HEAD = HttpMethodMatcher(HttpMethod.HEAD)
-  val POST = HttpMethodMatcher(HttpMethod.POST)
-  val PUT  = HttpMethodMatcher(HttpMethod.PUT)
+  val GET         = HttpMethodMatcher(HttpMethod.GET)
+  val GET_OR_POST = HttpMethodsMatcher(HttpMethod.GET, HttpMethod.POST)
+  val HEAD        = HttpMethodMatcher(HttpMethod.HEAD)
+  val POST        = HttpMethodMatcher(HttpMethod.POST)
+  val PUT         = HttpMethodMatcher(HttpMethod.PUT)
 }
