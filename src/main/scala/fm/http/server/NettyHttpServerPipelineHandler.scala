@@ -94,15 +94,28 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
   private[this] var contentBuilder: LinkedHttpContentBuilder = null
   
   protected def channelRead0(ctx: ChannelHandlerContext, obj: HttpObject): Unit = obj match {
+//    // This is a complete HttpRequest -- NOT CURRENTLY USED SINCE THIS CONDITION DOESN'T GET TRIGGERED UNDER NORMAL USE
+//    //                                   HOWEVER, I did see this get triggered when trying to connect to the server using
+//    //                                   HTTPS so maybe this could we be useful at some point to detect HTTPS connection
+//    //                                   trying to talk to our HTTPS server.  OR maybe we just need to add an HTTPS handler
+//    case request: FullHttpRequest =>
+//      if (logger.isTraceEnabled) trace("channelRead0 - "+obj.getClass.getSimpleName)(ctx)
+//      
+//      require(null == contentBuilder, "Received a FullHttpRequest before the previous contentBuilder was completed!")
+//      
+//      channelReadHttpRequest(request, Future.successful(Option(request.content()).map{ LinkedHttpContent(_) }))(ctx)
+//    
+    // This is the beginning of a request
     case request: HttpRequest =>
       if (logger.isTraceEnabled) trace("channelRead0 - "+obj.getClass.getSimpleName)(ctx)
       
-      require(null == contentBuilder, "Received an HttpRequest before the previous contentBuilder was completed!")     
+      require(null == contentBuilder, "Received an HttpRequest before the previous contentBuilder was completed!")
       require(!obj.isInstanceOf[HttpContent], "Not Expecting HttpContent!")
       
       contentBuilder = LinkedHttpContentBuilder()
       channelReadHttpRequest(request, contentBuilder.future)(ctx)
-      
+    
+    // This is a chunk of content that goes with the HttpRequest
     case content: HttpContent =>
       if (logger.isTraceEnabled) trace("channelRead0 - "+obj.getClass.getSimpleName)(ctx)
       require(null != contentBuilder, "Received an HttpContent but the contentBuilder is null!")
