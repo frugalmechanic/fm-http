@@ -27,5 +27,5 @@ libraryDependencies ++= Seq(
   "org.slf4j" % "slf4j-api" % "1.7.13",
   "ch.qos.logback" % "logback-classic" % "1.1.3",
   "javax.mail" % "mail" % "1.4.1",
-  "org.scalatest" %% "scalatest" % "2.2.4" % "test"
+  "org.scalatest" %% "scalatest" % "3.0.0" % "test"
 )
