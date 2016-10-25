@@ -5,10 +5,33 @@ Frugal Mechanic Async HTTP Client and Server
 
 This is our Async Http Client & Server for Scala based on Netty
 
-Usage
------
+Basic Server Usage
+------------------
 
-TODO
+    import fm.http.server.{HttpServer, RequestRouter, Response}
+    import fm.http.server.RouteMatchers._
+    import scala.concurrent.Future
+    
+    val router: RequestRouter = RequestRouter{
+      case GET("/") => Future.successful(Response.Ok("Home Page"))
+    }
+    
+    val server: HttpServer = HttpServer(8080, router, "<auth_key>")
+
+Basic Client Usage
+------------------
+
+    import fm.http.client.{FullStringResponse, HttpClient, Response}
+    import scala.concurrent.Future
+    import scala.concurrent.ExecutionContext.Implicits.global
+    
+    // Create an HttpClient with default options
+    val client: HttpClient = HttpClient()
+    
+    val res: Future[FullStringResponse] = client.getFullString("http://localhost:8080/")
+    
+    res.foreach{ r: FullStringResponse => assert(r.body == "Home Page") }
+    
 
 Authors
 -------
