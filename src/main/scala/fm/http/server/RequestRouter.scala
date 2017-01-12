@@ -71,7 +71,12 @@ trait RequestRouter {
   /**
    * If a RequestHandler throws an Exception then run this handler.  Useful for showing an Error Page when a request fails
    */
-  final def withErrorHandler(handler: RequestHandler)(implicit ec: ExecutionContext): RequestRouter = ErrorHandlerRequestRouter(this, handler)
+//  final def withErrorHandler(handler: RequestHandler)(implicit ec: ExecutionContext): RequestRouter = ErrorHandlerRequestRouter(this, handler)
+
+  /**
+   * If a RequestHandler throws an Exception then run this handler.  Useful for showing an Error Page when a request fails
+   */
+  final def withErrorHandler(handler: ErrorRequestHandler)(implicit ec: ExecutionContext): RequestRouter = ErrorHandlerRequestRouter(this, handler)
 }
 
 /**
@@ -131,7 +136,7 @@ final case class OrElseRequestRouter(a: RequestRouter, b: RequestRouter) extends
   override def afterShutdown():  Unit = { a.afterShutdown() ; b.afterShutdown()  }
 }
 
-final case class ErrorHandlerRequestRouter(router: RequestRouter, errorHandler: RequestHandler)(implicit ec: ExecutionContext) extends RequestRouter with Logging {
+final case class ErrorHandlerRequestRouter(router: RequestRouter, errorHandler: ErrorRequestHandler)(implicit ec: ExecutionContext) extends RequestRouter with Logging {
   def lookup(request: Request): Option[RequestHandler] = router.lookup(request).map{ wrap }
   
   /**
@@ -143,12 +148,12 @@ final case class ErrorHandlerRequestRouter(router: RequestRouter, errorHandler: 
       handler(request).recoverWith{ 
         case ex: Throwable =>
           log(ex)
-          errorHandler(request)
+          errorHandler(request, ex)
       }
     } catch {
       case ex: Throwable =>
         log(ex)
-        errorHandler(request)
+        errorHandler(request, ex)
     }
   }
   

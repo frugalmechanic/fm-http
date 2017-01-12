@@ -19,6 +19,11 @@ import scala.concurrent.Future
 
 package object server extends fm.netty.PackageImplicits {
   type RequestHandler = Request => Future[Response]
+  type ErrorRequestHandler = (Request, Throwable) => Future[Response]
+
+  implicit def requestHandlerToErrorRequestHandler(handler: RequestHandler): ErrorRequestHandler = {
+    (request: Request, _: Throwable) => handler(request)
+  }
   
   final implicit class RichRequestHandler(val handler: RequestHandler) extends AnyVal {
     def withFilter(filter: RequestFilter): RequestHandler = FilteredRequestHandler(handler, filter)
