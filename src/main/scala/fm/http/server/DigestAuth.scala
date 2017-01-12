@@ -58,10 +58,10 @@ object DigestAuth {
 
     val pass: String = CLIOptions.pass.getOrElse {
       print("Enter Password: ")
-      val pw1 = new String(System.console.readPassword())
+      val pw1: String = new String(System.console.readPassword())
 
       print("Again: ")
-      val pw2 = new String(System.console.readPassword())
+      val pw2: String = new String(System.console.readPassword())
 
       require(pw1 === pw2, "Passwords do not match!")
       pw1
@@ -166,15 +166,15 @@ final case class DigestAuth(
   }
   
   def isValid(request: Request, params: Map[String, String]): Boolean = {
-    val pUsername = params.getOrElse("username", "")
-    val pRealm = params.getOrElse("realm", "")
-    val pNonce = params.getOrElse("nonce", "")
-    val pClientNonce = params.getOrElse("cnonce", "")
-    val pCount = params.getOrElse("nc", "")
-    val pUri = params.getOrElse("uri", "")
-    val pResponse = params.getOrElse("response", "")
-    val pOpaque = params.getOrElse("opaque", "")
-    val pQop = params.getOrElse("qop", "")
+    val pUsername: String = params.getOrElse("username", "")
+    val pRealm: String = params.getOrElse("realm", "")
+    val pNonce: String = params.getOrElse("nonce", "")
+    val pClientNonce: String = params.getOrElse("cnonce", "")
+    val pCount: String = params.getOrElse("nc", "")
+    val pUri: String = params.getOrElse("uri", "")
+    val pResponse: String = params.getOrElse("response", "")
+    val pOpaque: String = params.getOrElse("opaque", "")
+    val pQop: String = params.getOrElse("qop", "")
     
     def computeResponse(ha1: String): String = {
       val ha2: String = DigestUtils.md5Hex(request.method.name+":"+pUri)
