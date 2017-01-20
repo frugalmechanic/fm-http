@@ -56,4 +56,10 @@ final case class NettyFutureWrapper[T](val f: NettyFuture[T]) extends Future[T] 
   }
   
   def value: Option[Try[T]] = if (f.isDone) Some(if (f.isSuccess) Success(f.get) else Failure(f.cause)) else None
+
+  // TODO: implement (new for Scala 2.12)
+  def transform[S](f: Try[T] => Try[S])(implicit executor: ExecutionContext): Future[S] = ???
+
+  // TODO: implement (new for Scala 2.12)
+  def transformWith[S](f: Try[T] => Future[S])(implicit executor: ExecutionContext): Future[S] = ???
 }
