@@ -68,6 +68,13 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   
   // If the Response has "Connection: close" then we set this
   private[this] var isConnectionClose: Boolean = false
+
+  // This can be set to false when we close the channel due to the
+  // isConnectionClose variable being true.
+  // Note: We can't just rely on the isConnectionClose variable
+  //       to manage this behavior because the server could still
+  //       close the connection mid-response.
+  private[this] var failPromisesOnChannelInactive: Boolean = true
   
   /** This is called once when a client connects to our server */
   override def channelActive(ctx: ChannelHandlerContext): Unit = {
@@ -81,7 +88,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   /** This is called once when a client disconnects from our server OR we close the connection */
   override def channelInactive(ctx: ChannelHandlerContext): Unit = {
     trace("channelInactive")(ctx)
-    failPromises(new IOException("Channel Closed"))(ctx)
+    if (failPromisesOnChannelInactive) failPromises(new IOException("Channel Closed"))(ctx)
     super.channelInactive(ctx)
   }
   
@@ -129,7 +136,9 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
       require(null eq contentBuilder, "Received an HttpResponse before the previous contentBuilder was completed!")     
       require(null ne responsePromise, "No promise to receive the HttpResponse")
       require(!obj.isInstanceOf[HttpContent], "Not Expecting HttpContent!")
-      
+
+      trace("HttpHeaders.isKeepAlive(response) => "+HttpHeaders.isKeepAlive(response))(ctx)
+
       if (!HttpHeaders.isKeepAlive(response)) {
         isConnectionClose = true
       }
@@ -148,6 +157,9 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
         
         if (isConnectionClose || null == pool) {
           trace("channelReadImpl - ctx.close()")
+          // We need to make sure we don't fail promises in the channelInactive
+          // method since we expect the channel to be closed.
+          failPromisesOnChannelInactive = false
           ctx.close()
         } else {
           pool.release(ctx.channel())
