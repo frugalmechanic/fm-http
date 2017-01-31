@@ -60,12 +60,23 @@ trait StaticFileHandlerBase extends RequestRouter {
    * e.g. Given "/js/foo.js" return something like "/js/foo.1470690999454.js" (assuming the file exists)
    */
   final def timestampedPath(path: String): String = {
+    getTimestampedPath(path).getOrElse{ path }
+  }
+
+  /**
+   * Given a file path return the timestamped version of the path if it exists
+   *
+   * e.g. Given "/js/foo.js" return something like "/js/foo.1470690999454.js" (if the file exists)
+   */
+  final def getTimestampedPath(path: String): Option[String] = {
+    val resolvedFile: Option[ResolvedFile] = findResolvedFile(path)
+
     // If there is already a timestamp then don't modify it
-    if (path.matches(HasTimestampPattern) || !path.contains('.')) return path
-    
+    if (resolvedFile.isDefined && (path.matches(HasTimestampPattern) || !path.contains('.'))) return Some(path)
+
     // Otherwise we attempt to resolve the file and add the timestamp
     val pathWithTimestamp: Option[String] = for {
-      resolved: ResolvedFile <- findResolvedFile(path)
+      resolved: ResolvedFile <- resolvedFile
       file: File = resolved.file
       timestamp: Long = lastModified(file)
       if timestamp > 0
@@ -76,8 +87,8 @@ trait StaticFileHandlerBase extends RequestRouter {
       val suffix: String = path.substring(dotIdx+1)
       s"$prefix.$formattedTimestamp.$suffix"
     }
-    
-    pathWithTimestamp.getOrElse{ path }
+
+    pathWithTimestamp
   }
   
   final protected def isFileSystemFile(f: File): Boolean = null != f && f.isFile && f.canRead && !f.isHidden
