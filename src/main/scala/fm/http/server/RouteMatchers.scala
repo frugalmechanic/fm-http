@@ -132,10 +132,13 @@ object RouteMatchers {
 
   final case class HttpMethodMatcher(method: HttpMethod) {
     def unapply(request: Request): Option[String] = if (method === request.method) Some(request.path) else None
+    def |(other: HttpMethodMatcher): HttpMethodsMatcher = HttpMethodsMatcher(method, other.method)
   }
 
   final case class HttpMethodsMatcher(methods: HttpMethod*) {
     def unapply(request: Request): Option[String] = if (methods.exists{ _ === request.method }) Some(request.path) else None
+    def |(other: HttpMethodMatcher): HttpMethodsMatcher = HttpMethodsMatcher((methods :+ other.method):_*)
+    def |(other: HttpMethodsMatcher): HttpMethodsMatcher = HttpMethodsMatcher((methods ++ other.methods):_*)
   }
   
   implicit def StringToDefaultHttpMethodMatcher(s: String): HttpMethodMatcher = GET
@@ -149,8 +152,12 @@ object RouteMatchers {
   object BOOL { def unapply(x: String): Option[Boolean] = x.parseBoolean }
   
   val GET         = HttpMethodMatcher(HttpMethod.GET)
-  val GET_OR_POST = HttpMethodsMatcher(HttpMethod.GET, HttpMethod.POST)
   val HEAD        = HttpMethodMatcher(HttpMethod.HEAD)
   val POST        = HttpMethodMatcher(HttpMethod.POST)
   val PUT         = HttpMethodMatcher(HttpMethod.PUT)
+  val DELETE      = HttpMethodMatcher(HttpMethod.DELETE)
+  val OPTIONS     = HttpMethodMatcher(HttpMethod.OPTIONS)
+  val PATCH       = HttpMethodMatcher(HttpMethod.PATCH)
+
+  val GET_OR_POST = GET | POST
 }
