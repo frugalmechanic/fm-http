@@ -19,7 +19,7 @@ scalacOptions := Seq(
   "-Ywarn-unused-import"
 ) ++ (if (scalaVersion.value.startsWith("2.12")) Seq(
   // Scala 2.12 specific compiler flags
-  "-opt:l:classpath"
+  "-opt:l:project"
 ) else Nil)
 
 libraryDependencies ++= Seq(
@@ -34,8 +34,8 @@ libraryDependencies ++= Seq(
   "com.github.jnr" % "jnr-posix" % "3.0.1", // POSIX Support (getpid and setssid) for the HttpServerApp
   "joda-time" % "joda-time" % "2.9.1",
   "org.joda" % "joda-convert" % "1.8", // Required by joda-time when using Scala
-  "org.slf4j" % "slf4j-api" % "1.7.13",
-  "ch.qos.logback" % "logback-classic" % "1.1.3",
+  "org.slf4j" % "slf4j-api" % "1.7.22",
+  "ch.qos.logback" % "logback-classic" % "1.1.9",
   "javax.mail" % "mail" % "1.4.1",
-  "org.scalatest" %% "scalatest" % "3.0.0" % "test"
+  "org.scalatest" %% "scalatest" % "3.0.1" % "test"
 )
