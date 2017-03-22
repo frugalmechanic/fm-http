@@ -28,7 +28,13 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 
 object Request {
   def apply(remoteIp: IP, request: HttpRequest, content: LinkedHttpContentReader)(implicit execution: ExecutionContext): Request = new Request(remoteIp, request, content)
-  
+
+  def dummy(remoteIp: IP, method: HttpMethod, uri: String)(implicit execution: ExecutionContext): Request = {
+    apply(remoteIp, new DefaultHttpRequest(HttpVersion.HTTP_1_1, method, uri), LinkedHttpContentReader.empty)
+  }
+
+  def empty(implicit execution: ExecutionContext): Request = dummy(IP(0), HttpMethod.GET, "/")
+
   private def expectBodyContent(request: HttpRequest): Boolean = {
     import HttpMethod.{POST, PUT, PATCH}
     

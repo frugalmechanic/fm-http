@@ -29,7 +29,12 @@ import scala.util.{Failure, Success, Try}
 
 object LinkedHttpContentReader {
   def apply(need100Continue: Boolean, head: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext, executor: ExecutionContext): LinkedHttpContentReader = new LinkedHttpContentReader(need100Continue, head)
-  
+
+  def empty(implicit executor: ExecutionContext): LinkedHttpContentReader = {
+    val ctx: ChannelHandlerContext = null
+    LinkedHttpContentReader(false, Future.successful(None))(ctx, executor)
+  }
+
   private val CONTINUE: FullHttpResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.CONTINUE, Unpooled.EMPTY_BUFFER)  
 }
 
