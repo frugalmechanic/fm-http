@@ -18,7 +18,6 @@ package fm.http.client
 import fm.common.Implicits._
 import fm.common.{IP, Logging, URI, URL}
 import fm.http._
-import fm.netty._
 
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.{Channel, ChannelFuture, ChannelInitializer, ChannelOption, ChannelPipeline}
@@ -26,20 +25,18 @@ import io.netty.channel.group.{ChannelGroup, DefaultChannelGroup}
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.SocketChannel
 import io.netty.channel.socket.nio.NioSocketChannel
-import io.netty.handler.codec.http.{HttpClientCodec, HttpMethod, HttpResponseStatus}
+import io.netty.handler.codec.http.{HttpClientCodec, HttpMethod}
 import io.netty.handler.codec.socks._
-import io.netty.handler.stream.ChunkedWriteHandler
 import io.netty.handler.ssl.{SslContext, SslContextBuilder, SslHandler}
 import io.netty.util.concurrent.GlobalEventExecutor
 
-import java.util.concurrent.{ConcurrentHashMap, TimeoutException, TimeUnit}
-import java.io.{Closeable, File, FileNotFoundException, IOException}
+import java.util.concurrent.{ConcurrentHashMap, TimeoutException}
+import java.io.IOException
 import java.nio.charset.Charset
 import java.lang.ref.WeakReference
 import java.net.MalformedURLException
 
-import scala.collection.JavaConverters._
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.{Future, Promise}
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
 
@@ -152,7 +149,7 @@ final case class DefaultHttpClient(
   followRedirects: Boolean, // Should 301/302 redirects be followed for GET or HEAD requests?
   maxRedirectCount: Int // The maximum number of 301/302 redirects to follow for a GET or HEAD request
 ) extends HttpClient with Logging {
-  import DefaultHttpClient.{EndPoint, ThreadFactory, TimeoutTask, workerGroup}
+  import DefaultHttpClient.{EndPoint, TimeoutTask, workerGroup}
   
   require(maxConnectionsPerHost > 0, "maxConnectionsPerHost must be > 0")
   require(maxRedirectCount >= 0, "maxRedirectCount must be >= 0")
@@ -329,7 +326,7 @@ final case class DefaultHttpClient(
     }
     
     if (socksProxy.isDefined) {
-      import NettyHttpClientPipelineHandler.{SOCKSInit, SOCKSAuth, SOCKSConnect}
+      import NettyHttpClientPipelineHandler.{SOCKSInit, SOCKSConnect}
       import scala.collection.JavaConverters._
       
       

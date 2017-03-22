@@ -17,15 +17,11 @@ package fm.http.client
 
 import fm.common.Logging
 import fm.common.Implicits._
-import java.io.Closeable
 import java.util.{Deque, Queue}
-import java.util.concurrent.{ConcurrentHashMap, ConcurrentLinkedDeque, LinkedBlockingQueue}
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.{ConcurrentLinkedDeque, LinkedBlockingQueue}
 import io.netty.channel.Channel
-import scala.annotation.tailrec
-import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future, Promise}
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success}
 
 object ChannelPool {
   private case class IdleChannel(channel: Channel, lastActivity: Long)

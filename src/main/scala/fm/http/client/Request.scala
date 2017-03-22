@@ -20,7 +20,7 @@ import fm.common.Implicits._
 import fm.http._
 import java.io.File
 import io.netty.buffer.{ByteBuf, Unpooled}
-import io.netty.handler.codec.http.{ClientCookieEncoder, DefaultFullHttpRequest, DefaultHttpRequest, FullHttpRequest, HttpHeaders, HttpMessage, HttpRequest, HttpMethod, HttpVersion}
+import io.netty.handler.codec.http.{DefaultFullHttpRequest, DefaultHttpRequest, FullHttpRequest, HttpMessage, HttpRequest, HttpMethod, HttpVersion}
 import io.netty.util.CharsetUtil
 
 object Request {

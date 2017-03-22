@@ -16,7 +16,6 @@
 package fm.http.server
 
 import java.io.{File, InputStream}
-import scala.concurrent.Future
 import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.handler.codec.http._
 import io.netty.util.CharsetUtil

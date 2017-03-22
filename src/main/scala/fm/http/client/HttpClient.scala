@@ -15,7 +15,6 @@
  */
 package fm.http.client
 
-import fm.common.Implicits._
 import fm.common.ScheduledTaskRunner
 import fm.http._
 import java.io.{Closeable, File}

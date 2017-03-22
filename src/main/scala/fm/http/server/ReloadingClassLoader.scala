@@ -2,9 +2,9 @@ package fm.http.server
 
 import fm.common.IOUtils
 import fm.common.Implicits._
-import java.io.{File, InputStream}
-import java.lang.reflect.{Field, Method, Modifier}
-import java.net.{URL, URLClassLoader, URLConnection}
+import java.io.InputStream
+import java.lang.reflect.Method
+import java.net.{URL, URLConnection}
 import java.security.{ProtectionDomain, Policy, CodeSource, CodeSigner}
 import java.util.concurrent.ConcurrentHashMap
 import scala.collection.JavaConverters._

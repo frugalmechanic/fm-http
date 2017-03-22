@@ -16,7 +16,6 @@
 package fm.http.server
 
 import scala.concurrent.Future
-import io.netty.handler.codec.http.HttpResponseStatus
 import fm.http.Status
 
 abstract class DefaultRequestRouter extends RequestRouterBase with RequestHandler {

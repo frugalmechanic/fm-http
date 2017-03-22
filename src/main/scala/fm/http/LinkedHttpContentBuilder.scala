@@ -44,7 +44,7 @@ object LinkedHttpContentBuilder {
 }
 
 final case class LinkedHttpContentBuilder() extends Closeable {
-  import LinkedHttpContentBuilder.{isEmpty, nonEmpty}
+  import LinkedHttpContentBuilder.nonEmpty
   
   @volatile private var done: Boolean = false
   @volatile private var first: Boolean = true

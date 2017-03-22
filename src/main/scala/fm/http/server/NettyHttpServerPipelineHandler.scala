@@ -19,7 +19,7 @@ import fm.common.{IP, Logging}
 import fm.common.Implicits._
 import fm.http._
 
-import io.netty.buffer.{ByteBuf, Unpooled}
+import io.netty.buffer.Unpooled
 import io.netty.channel.{Channel, ChannelHandlerContext, DefaultFileRegion, SimpleChannelInboundHandler}
 import io.netty.channel.group.ChannelGroup
 import io.netty.handler.codec.http._
@@ -28,7 +28,7 @@ import io.netty.util.{AttributeKey, CharsetUtil}
 
 import java.io.{File, FileNotFoundException, InputStream, RandomAccessFile}
 import java.util.Date
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
 object NettyHttpServerPipelineHandler {

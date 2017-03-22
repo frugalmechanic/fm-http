@@ -15,13 +15,9 @@
  */
 package fm.http.client
 
-import io.netty.buffer.ByteBuf
-import io.netty.handler.codec.http.{HttpHeaders, HttpResponse, HttpResponseStatus, HttpVersion}
-import io.netty.handler.codec.http.multipart.{HttpPostRequestDecoder, InterfaceHttpData}
-import io.netty.util.CharsetUtil
+import io.netty.handler.codec.http.{HttpHeaders, HttpResponse, HttpVersion}
 import java.io.Closeable
 import java.nio.charset.Charset
-import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import fm.common.Logging
 import fm.common.Implicits._

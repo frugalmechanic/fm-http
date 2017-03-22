@@ -15,9 +15,8 @@
  */
 package fm.http.server
 
-import fm.http.{MimeTypes, MutableHeaders, Status}
 import java.io.File
-import org.joda.time.{DateTime, LocalDateTime}
+import org.joda.time.LocalDateTime
 import org.joda.time.format.{DateTimeFormat, DateTimeFormatter}
 
 object StaticFileHandler {

@@ -15,9 +15,8 @@
  */
 package fm.http
 
-import io.netty.buffer.{ByteBuf, ByteBufHolder, DefaultByteBufHolder}
-import io.netty.handler.codec.http.{HttpContent, DefaultHttpContent}
-import io.netty.util.IllegalReferenceCountException
+import io.netty.buffer.ByteBuf
+import io.netty.handler.codec.http.DefaultHttpContent
 import scala.concurrent.Future
 import scala.util.Try
 

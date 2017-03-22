@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 import scala.concurrent.duration.Duration
 import io.netty.bootstrap.ServerBootstrap
-import io.netty.channel.{Channel, ChannelFuture, ChannelInitializer, ChannelOption, ChannelPipeline}
+import io.netty.channel.{Channel, ChannelInitializer, ChannelOption, ChannelPipeline}
 import io.netty.channel.group.{ChannelGroup, DefaultChannelGroup}
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.SocketChannel

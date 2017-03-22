@@ -16,11 +16,11 @@
 package fm.http.server
 
 import fm.common.Implicits._
-import fm.common.{ClassUtil, Logging, Resource}
+import fm.common.{ClassUtil, Logging}
 import fm.http.{MimeTypes, MutableHeaders, Status}
-import java.io.{File, InputStream}
+import java.io.File
 import java.net.{URL, URLConnection}
-import org.joda.time.{DateTime, LocalDateTime}
+import org.joda.time.DateTime
 import scala.collection.JavaConverters._
 
 object StaticClasspathFileHandler {
