@@ -47,17 +47,12 @@ trait BasicAuth extends Auth with Logging {
     }
   }
 
-  final def isAuthorized(request: Request): Future[Boolean] = try {
+  final def isAuthorized(request: Request): Future[Boolean] = {
     val auth: String = request.headers.authorization.getOrElse{ return Future.successful(false) }
 
     Headers.parseBasicAuthorization(auth) match {
       case Some((user,pass)) => isAuthorized(user, pass)
       case None => Future.successful(false)
     }
-
-  } catch {
-    case ex: Exception =>
-      logger.warn("Caught Exception Performing Basic Auth", ex)
-      Future.successful(false)
   }
 }

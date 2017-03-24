@@ -87,7 +87,7 @@ object Headers {
   /**
    * Given the value of the Authorization header parse the username/password for Basic auth
    */
-  def parseBasicAuthorization(value: String): Option[(String,String)] = {
+  def parseBasicAuthorization(value: String): Option[(String,String)] = try {
     value match {
       case BasicAuthHeader(encoded) => new String(Base64.decode(encoded), StandardCharsets.ISO_8859_1) match {
         case BasicAuthSplit(user, pass) => Some((user, pass))
@@ -95,6 +95,9 @@ object Headers {
       }
       case _ => None
     }
+  } catch {
+    // This will catch Base64 decoding exceptions and just return None
+    case ex: Exception => None
   }
   
   def makeBasicAuthorization(user: String, pass: String): String = Base64.encodeBytes((user+":"+pass).getBytes(StandardCharsets.ISO_8859_1))
