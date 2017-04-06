@@ -25,4 +25,11 @@ object RequestFilter {
 
 trait RequestFilter {
   def handle(request: Request, handler: RequestHandler): Future[Response]
+  final def andThen(that: RequestFilter): AndThenRequestFilter = AndThenRequestFilter(this, that)
+}
+
+final case class AndThenRequestFilter(a: RequestFilter, b: RequestFilter) extends RequestFilter {
+  def handle(request: Request, handler: RequestHandler): Future[Response] = {
+    a.handle(request, (request: Request) => b.handle(request, handler))
+  }
 }
