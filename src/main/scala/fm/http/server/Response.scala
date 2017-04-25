@@ -15,6 +15,7 @@
  */
 package fm.http.server
 
+import fm.common.InputStreamResource
 import java.io.{File, InputStream}
 import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.handler.codec.http._
@@ -58,6 +59,23 @@ object Response {
   def plain(status: Status, headers: Headers): Response = plain(status, s"${status.code} ${status.msg}", headers)
   def plain(status: Status, headers: Headers, body: String): Response = plain(status, body, headers)
   def plain(status: Status, body: String, headers: Headers): Response = FullResponse(status, headers, Unpooled.copiedBuffer(body, CharsetUtil.UTF_8))
+
+  /** Common response helper */
+  def excel(file: File, fileName: String): Response = download(file, fileName, "application/vnd.ms-excel")
+
+  /** Download a file as an attachment */
+  def download(file: File, fileName: String, mimeType: String): Response = download(fileName, mimeType)(InputStreamResource.forFile(file))
+  def download(fileName: String, mimeType: String)(input: InputStreamResource): Response = {
+    val escapedFile: String = fileName.replaceAll("\"", "\\\"") // Replace " with \"
+
+    val headers: Headers = Headers(
+      "Content-Disposition" -> s"""attachment; filename="$escapedFile"""",
+      "Mime-Type" -> mimeType
+    )
+
+    // Read to a bytebuf, so we can delete the file
+    Response.Ok(headers, Unpooled.copiedBuffer(input.readBytes()))
+  }
 }
 
 sealed trait Response extends Message {
