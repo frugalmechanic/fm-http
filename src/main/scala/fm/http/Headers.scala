@@ -57,7 +57,22 @@ object Headers {
     val cleaned: String = if(s.contains(";")) s.substring(0, s.indexOf(";")) else s
     Try{ RFC1123.parseDateTime(cleaned) }.toOption
   }
-  
+
+  // A very very simple Regex for parsing the filename from the Content-Disposition Header
+  private[http] val ContentDispositionAttachmentFileNamePattern: Regex = """attachment; filename="(.*)"""".r
+
+  private[http] def parseContentDispositionAttachmentFileName(s: String): Option[String] = s match {
+    case ContentDispositionAttachmentFileNamePattern(name) => name.toBlankOption
+    case _ => None
+  }
+
+  private[http] object AdditionalNames {
+    //
+    // Standard but not part of Netty's Names
+    //
+    val CONTENT_DISPOSITION = "Content-Disposition"
+  }
+
   private[http] object NonStandardNames {
     //
     // Non-Standard Request Headers
@@ -225,6 +240,8 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   def cacheControl: Option[String] = get(Names.CACHE_CONTROL)
   def connection: Option[String] = get(Names.CONNECTION)
   def contentBase: Option[String] = get(Names.CONTENT_BASE)
+  def contentDisposition: Option[String] = get(AdditionalNames.CONTENT_DISPOSITION)
+  def contentDispositionAttachmentFileName: Option[String] = contentDisposition.flatMap{ parseContentDispositionAttachmentFileName }
   def contentEncoding: Option[String] = get(Names.CONTENT_ENCODING)
   def contentLanguage: Option[String] = get(Names.CONTENT_LANGUAGE)
   def contentLength: Option[Long] = getLong(Names.CONTENT_LENGTH)
@@ -483,7 +500,13 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   
   def contentBase_=(v: String): Unit = set(Names.CONTENT_BASE, v)
   def contentBase_=(v: Option[String]): Unit = set(Names.CONTENT_BASE, v)
-  
+
+  def contentDisposition_=(v: String): Unit = set(AdditionalNames.CONTENT_DISPOSITION, v)
+  def contentDisposition_=(v: Option[String]): Unit = set(AdditionalNames.CONTENT_DISPOSITION, v)
+
+  def contentDispositionAttachmentFileName_=(v: String): Unit = contentDisposition = makeContentDispositionAttachmentWithFileName(v)
+  def contentDispositionAttachmentFileName_=(v: Option[String]): Unit = contentDisposition = v.map{ makeContentDispositionAttachmentWithFileName }
+
   def contentEncoding_=(v: String): Unit = set(Names.CONTENT_ENCODING, v)
   def contentEncoding_=(v: Option[String]): Unit = set(Names.CONTENT_ENCODING, v)
   
@@ -688,5 +711,14 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   def basicAuthorization_=(userPass: (String,String)): Unit = {
     val (user, pass) = userPass
     Headers.makeBasicAuthorization(user, pass)
+  }
+
+  //
+  // Private Helpers
+  //
+
+  private def makeContentDispositionAttachmentWithFileName(v: String): String = {
+    val escapedName: String = v.replace("\"", "\\\"") // Replace " with \"
+    s"""attachment; filename="$escapedName""""
   }
 }
