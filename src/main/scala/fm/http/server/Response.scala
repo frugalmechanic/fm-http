@@ -54,11 +54,33 @@ object Response {
   def apply(status: Status, headers: Headers, arr: Array[Byte]): Response = FullResponse(status, headers, Unpooled.copiedBuffer(arr))
   def apply(status: Status, headers: Headers, arr: Array[Byte], offset: Int, length: Int): Response = FullResponse(status, headers, Unpooled.copiedBuffer(arr, offset, length))
   def apply(status: Status, headers: Headers, buf: ByteBuf): Response = FullResponse(status, headers, buf)
-  
+
   def plain(status: Status): Response = plain(status, Headers.empty)
   def plain(status: Status, headers: Headers): Response = plain(status, s"${status.code} ${status.msg}", headers)
   def plain(status: Status, headers: Headers, body: String): Response = plain(status, body, headers)
   def plain(status: Status, body: String, headers: Headers): Response = FullResponse(status, headers, Unpooled.copiedBuffer(body, CharsetUtil.UTF_8))
+
+  //
+  // The saveAs methods force the browser to prompt the user to Save or Open the file via the Content-Disposition header
+  //
+
+  def saveAs(file: File): Response = saveAs(file, file.getName)
+  def saveAs(file: File, saveAsName: String): Response = saveAs(file, saveAsName, MimeTypes.forPath(saveAsName).getOrElse{ MimeTypes.BINARY })
+
+  def saveAs(file: File, saveAsName: String, contentType: String): Response = {
+    require(file.isFile && file.canRead, "Missing File or no permissions: "+file)
+    val raf: RandomAccessFile = new RandomAccessFile(file, "r")
+    saveAs(raf, saveAsName, contentType)
+  }
+
+  def saveAs(raf: RandomAccessFile, saveAsName: String): Response = saveAs(raf, saveAsName, MimeTypes.forPath(saveAsName).getOrElse{ MimeTypes.BINARY })
+
+  def saveAs(raf: RandomAccessFile, saveAsName: String, contentType: String): Response = {
+    val headers: MutableHeaders = MutableHeaders()
+    headers.contentType = contentType
+    headers.contentDispositionAttachmentFileName = saveAsName
+    RandomAccessFileResponse(Status.OK, headers, raf)
+  }
 }
 
 sealed trait Response extends Message {

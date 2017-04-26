@@ -24,6 +24,7 @@ object MimeTypes {
   val JPEG        = "image/jpeg"
   val PNG         = "image/png"
   val TIFF        = "image/tiff"
+
   // Text
   val JAVASCRIPT  = "application/javascript"
   val JSON        = "application/json"
@@ -32,6 +33,7 @@ object MimeTypes {
   val HTML        = "text/html"
   val PLAIN       = "text/plain"
   val XML         = "application/xml"
+
   // Other
   val GZIP        = "application/x-gzip"
   val ZIP         = "application/zip"
@@ -41,6 +43,14 @@ object MimeTypes {
   val PDF         = "application/pdf"
   val BINARY      = "application/octet-stream"
   val WOFF        = "application/font-woff"
+
+  // Microsoft Office Types
+  val XLS         = "application/vnd.ms-excel"
+  val XLSX        = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  val XLSM        = "application/vnd.ms-excel.sheet.macroEnabled.12"
+  val DOC         = "application/msword"
+  val DOCX        = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
 
   // type -> extensions
   val mimeTypeToExtension = Vector[(String,Seq[String])](
@@ -63,10 +73,16 @@ object MimeTypes {
     SVG         -> "svg",
     PDF         -> "pdf",
     WOFF        -> "woff",
-    BINARY      -> "ttf"
+    BINARY      -> "ttf",
+    // MS Office
+    XLS         -> "xls",
+    XLSX        -> "xlsx",
+    XLSM        -> "xlsm",
+    DOC         -> "doc",
+    DOCX        -> "docx"
   ).toUniqueHashMap
 
-  val compressable: Vector[String] = Vector(HTML,JAVASCRIPT,JSON,CSS,CSV,PLAIN,XML,X_COMPONENT,RSS,SVG)
+  val compressable: Vector[String] = Vector(HTML,JAVASCRIPT,JSON,CSS,CSV,PLAIN,XML,X_COMPONENT,RSS,SVG,XLS,DOC)
 
   // This is for the mimeTypeToExtension map
   private implicit def toSeq(s: String): Seq[String] = Seq(s)
