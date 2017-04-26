@@ -23,10 +23,32 @@ import io.netty.util.CharsetUtil
 import fm.common.{Logging, TestHelpers}
 import fm.common.Implicits._
 import fm.lazyseq.LazySeq
+import java.io.{File, RandomAccessFile}
+import java.nio.charset.StandardCharsets.UTF_8
+import java.nio.file.Files
 
 object TestClientAndServer {
   val port: Int = 1234
   val requestCount: Int = 1000
+
+  private val tmpFile: File = {
+    val f: File = makeTempFile("This is a temp file")
+    f.deleteOnExit() // This is okay since it's only a single file and a short lived process
+    f
+  }
+
+  private def makeRandomAccessFile(contents: String): RandomAccessFile = {
+    val f: File = makeTempFile(contents)
+    val raf: RandomAccessFile = new RandomAccessFile(f, "r")
+    f.delete() // Our RandomAccessFile is open so should be safe to delete from the file system
+    raf
+  }
+
+  private def makeTempFile(contents: String): File = {
+    val f: File = File.createTempFile("fm-http-tests", ".tmp")
+    Files.write(f.toPath, contents.getBytes(UTF_8))
+    f
+  }
   
   import fm.http.client.HttpClient
   import fm.http.server._
@@ -49,25 +71,28 @@ object TestClientAndServer {
   private val Latin1Header: Headers = Headers(("Content-Type", "text/html; charset=ISO-8859-1"))
 
   protected val unwrappedHandler: PartialFunction[Request, Response] = {
-    case GET(simple"/${INT(code)}") => Response(Status(code), Status(code).msg)
+    case GET(simple"/${INT(code)}")       => Response(Status(code), Status(code).msg)
     case GET(simple"/close/${INT(code)}") => Response(Status(code), Headers("Connection" -> "close"), Status(code).msg)
-    case GET("/data_one_mb")        => Response.Ok(makeLinkedHttpContent(OneMB))
-    case GET("/data_hundred_mb")    => Response.Ok(makeLinkedHttpContent(OneMB * 100))
+    case GET("/data_one_mb")              => Response.Ok(makeLinkedHttpContent(OneMB))
+    case GET("/data_hundred_mb")          => Response.Ok(makeLinkedHttpContent(OneMB * 100))
 
-    case GET("/utf-8")                   => Response.Ok(UTF8Header, Unpooled.copiedBuffer("£", CharsetUtil.UTF_8))
-    case GET("/latin1")                  => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", CharsetUtil.ISO_8859_1))
-    case GET("/default-latin1")          => Response.Ok(Headers.empty, Unpooled.copiedBuffer("£", CharsetUtil.ISO_8859_1))
-    case GET("/latin1-header-utf8-data") => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", CharsetUtil.UTF_8))
+    case GET("/utf-8")                    => Response.Ok(UTF8Header, Unpooled.copiedBuffer("£", CharsetUtil.UTF_8))
+    case GET("/latin1")                   => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", CharsetUtil.ISO_8859_1))
+    case GET("/default-latin1")           => Response.Ok(Headers.empty, Unpooled.copiedBuffer("£", CharsetUtil.ISO_8859_1))
+    case GET("/latin1-header-utf8-data")  => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", CharsetUtil.UTF_8))
     
-    case GET("/ok")                      => Response.Ok(Headers.empty, Unpooled.copiedBuffer("ok", CharsetUtil.ISO_8859_1))
-    case GET("/redirect")                => Response.Found("/ok")
+    case GET("/ok")                       => Response.Ok(Headers.empty, Unpooled.copiedBuffer("ok", CharsetUtil.ISO_8859_1))
+    case GET("/redirect")                 => Response.Found("/ok")
     
-    case GET("/redirect1")               => Response.Found("/redirect")
-    case GET("/redirect2")               => Response.MovedPermanently("/redirect1")
-    case GET("/redirect3")               => Response.Found(s"http://localhost:$port/redirect2")
-    case GET("/redirect4")               => Response.Found("/redirect3")
-    case GET("/redirect5")               => Response.Found("/redirect4")
-    case GET("/redirect6")               => Response.Found("/redirect5")
+    case GET("/redirect1")                => Response.Found("/redirect")
+    case GET("/redirect2")                => Response.MovedPermanently("/redirect1")
+    case GET("/redirect3")                => Response.Found(s"http://localhost:$port/redirect2")
+    case GET("/redirect4")                => Response.Found("/redirect3")
+    case GET("/redirect5")                => Response.Found("/redirect4")
+    case GET("/redirect6")                => Response.Found("/redirect5")
+
+    case GET("/file")                     => Response.Ok(UTF8Header, tmpFile)
+    case GET("/random_access_file")       => Response.Ok(UTF8Header, makeRandomAccessFile("This is a random access file"))
   }
   
   // This just cycles through all the ASCII printable chars starting at the space ' ' (20) and ending with '~' (126)
@@ -115,7 +140,7 @@ object TestClientAndServer {
       case None =>
         Future.successful(f) 
     }
-  }  
+  }
 }
 
 // TODO: split this into a "stress test" mode and a "normal" unit testing mode
@@ -330,5 +355,27 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   
   test("Redirect 6 - noFollowRedirects") {
     getSync("/redirect6", 302, "/redirect5", clientNoFollowRedirects)
+  }
+
+  test("File - Single") {
+    getSync("/file", 200, "This is a temp file")
+  }
+
+  test("File - 200 Requests") {
+    // Uses blocking calls to maintain a constant number of connections to the server
+    LazySeq.wrap(1 to 200).parForeach(threads=64){ _ =>
+      getSync("/file", 200, "This is a temp file")
+    }
+  }
+
+  test("RandomAccessFile - Single") {
+    getSync("/random_access_file", 200, "This is a random access file")
+  }
+
+  test("RandomAccessFile - 200 Requests") {
+    // Uses blocking calls to maintain a constant number of connections to the server
+    LazySeq.wrap(1 to 200).parForeach(threads=64){ _ =>
+      getSync("/random_access_file", 200, "This is a random access file")
+    }
   }
 }

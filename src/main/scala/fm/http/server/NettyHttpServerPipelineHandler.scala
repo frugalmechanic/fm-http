@@ -142,10 +142,11 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
       logger.error("Caught Exception waiting for Response Future - Sending Error Response", ex)
       sendFullResponse(request, prepareResponse(request, makeErrorResponse(Status.INTERNAL_SERVER_ERROR).toFullHttpResponse(version), wantKeepAlive))
     }.onSuccess { res: Response => res match {
-      case full:  FullResponse        => sendFullResponse(request, prepareResponse(request, full.toFullHttpResponse(version), wantKeepAlive))
-      case async: AsyncResponse       => sendAsyncResponse(request, prepareResponse(request, async.toHttpResponse(version), wantKeepAlive), async.head)
-      case input: InputStreamResponse => sendInputStreamResponse(request, prepareResponse(request, input.toHttpResponse(version), wantKeepAlive), input.input, input.length)
-      case file:  FileResponse        => 
+      case full:  FullResponse             => sendFullResponse(request, prepareResponse(request, full.toFullHttpResponse(version), wantKeepAlive))
+      case async: AsyncResponse            => sendAsyncResponse(request, prepareResponse(request, async.toHttpResponse(version), wantKeepAlive), async.head)
+      case input: InputStreamResponse      => sendInputStreamResponse(request, prepareResponse(request, input.toHttpResponse(version), wantKeepAlive), input.input, input.length)
+      case file:  RandomAccessFileResponse => sendRandomAccessFileResponse(request, prepareResponse(request, file.toHttpResponse(version), wantKeepAlive), file.file)
+      case file:  FileResponse             =>
         try {
           sendFileResponse(request, prepareResponse(request, file.toHttpResponse(version), wantKeepAlive), file.file)
         } catch {
@@ -237,7 +238,7 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     val obj: HttpContentChunkedInput = HttpContentChunkedInput(new ChunkedStream(input))
     
     ctx.write(response)
-    ctx.writeAndFlush(obj).onComplete { res =>
+    ctx.writeAndFlush(obj).onComplete { res: Try[Void] =>
       if (res.isFailure) onResponseComplete(request, res, HttpHeaders.isKeepAlive(response))
       else ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{ onResponseComplete(request, _, HttpHeaders.isKeepAlive(response)) }
     }
@@ -252,27 +253,40 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     if (!file.isFile || !file.canRead) throw new FileNotFoundException("Missing File: "+file)
     
     val raf: RandomAccessFile = new RandomAccessFile(file, "r")
+
+    sendRandomAccessFileResponse(request, response, raf)
+  }
+
+  /**
+   * For sending a File-based response
+   */
+  private def sendRandomAccessFileResponse(request: Request, response: HttpResponse, raf: RandomAccessFile)(implicit ctx: ChannelHandlerContext): Unit = {
+    trace("sendRandomAccessFileResponse")
+
     val length: Long = raf.length()
-    
+
     // Set the Content-Length since we know the length of the file
     if (includeContentLength(request, response)) HttpHeaders.setContentLength(response, length)
-    
+
     // If we might GZIP/DEFLATE this content then we can't use sendfile since it would
-    // bypass the NettyContentCompressor which would have already modified the Content-Encoding 
+    // bypass the NettyContentCompressor which would have already modified the Content-Encoding
     val useSendFile: Boolean = !NettyContentCompressor.isCompressable(response)
-    
-    trace(s"sendFileResponse(sendFile => $useSendFile)")
-    
+
+    trace(s"sendRandomAccessFileResponse(sendFile => $useSendFile)")
+
     val obj: AnyRef = if (useSendFile) {
       new DefaultFileRegion(raf.getChannel, 0, length)
     } else {
-      // The NettyContentCompressor can't handle a ChunkedFile (which is a ChunkedInput[ByteBuf]) 
+      // The NettyContentCompressor can't handle a ChunkedFile (which is a ChunkedInput[ByteBuf])
       // so we wrap it in HttpContentChunkedInput to turn it into a ChunkedInput[HttpContent]
       HttpContentChunkedInput(new ChunkedFile(raf, 0, length, 8192))
     }
-    
+
     ctx.write(response)
-    ctx.writeAndFlush(obj).onComplete { res =>
+    ctx.writeAndFlush(obj).onComplete { res: Try[Void] =>
+      // Make sure our RandomAccessFile got closed
+      raf.close()
+
       if (res.isFailure) onResponseComplete(request, res, HttpHeaders.isKeepAlive(response))
       else ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{ onResponseComplete(request, _, HttpHeaders.isKeepAlive(response)) }
     }

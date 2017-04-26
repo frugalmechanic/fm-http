@@ -15,7 +15,7 @@
  */
 package fm.http.server
 
-import java.io.{File, InputStream}
+import java.io.{File, InputStream, RandomAccessFile}
 import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.handler.codec.http._
 import io.netty.util.CharsetUtil
@@ -29,6 +29,7 @@ object Response {
   def Ok(head: LinkedHttpContent): AsyncResponse = AsyncResponse(Status.OK, Headers.empty, head)
   def Ok(headers: Headers, head: LinkedHttpContent): AsyncResponse = AsyncResponse(Status.OK, headers, head)
   def Ok(headers: Headers, file: File): FileResponse = FileResponse(Status.OK, headers, file)
+  def Ok(headers: Headers, file: RandomAccessFile): RandomAccessFileResponse = RandomAccessFileResponse(Status.OK, headers, file)
   
   /** 301 */
   def MovedPermanently(location: String): Response = plain(Status.MOVED_PERMANENTLY, location, Headers("Location" -> location))
@@ -91,6 +92,17 @@ final case class AsyncResponse(status: Status, headers: Headers, head: LinkedHtt
  * This represents a File that we want to send back to the user 
  */
 final case class FileResponse(status: Status, headers: Headers, file: File) extends Response with FileMessage {
+  def toHttpResponse(version: HttpVersion): HttpResponse = {
+    val r = new DefaultHttpResponse(version, status.toHttpResponseStatus)
+    r.headers().add(headers.nettyHeaders)
+    r
+  }
+}
+
+/**
+ * This represents a RandomAccessFile that we want to send back to the user
+ */
+final case class RandomAccessFileResponse(status: Status, headers: Headers, file: RandomAccessFile) extends Response {
   def toHttpResponse(version: HttpVersion): HttpResponse = {
     val r = new DefaultHttpResponse(version, status.toHttpResponseStatus)
     r.headers().add(headers.nettyHeaders)
