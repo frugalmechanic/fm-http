@@ -16,8 +16,8 @@
 package fm.http.server
 
 import java.io.File
-import org.joda.time.LocalDateTime
-import org.joda.time.format.{DateTimeFormat, DateTimeFormatter}
+import java.time.{Instant, LocalDateTime, ZoneOffset}
+import java.time.format.DateTimeFormatter
 
 object StaticFileHandler {
   /** Normal expiration for static assets */
@@ -29,10 +29,10 @@ object StaticFileHandler {
   /** Default indexFiles to use */
   val indexFiles: Seq[String] = Seq("index.html")
 
-  private[this] val timestampFormat: DateTimeFormatter = DateTimeFormat.forPattern("yyyyMMddHHmmss")
+  private[this] val timestampFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
   
   def formattedTimestamp(f: File): String = formattedTimestamp(f.lastModified())
-  def formattedTimestamp(millis: Long): String = new LocalDateTime(millis).toString(timestampFormat)
+  def formattedTimestamp(millis: Long): String = LocalDateTime.ofInstant(Instant.ofEpochMilli(millis), ZoneOffset.UTC).format(timestampFormat)
 
   def apply(root: String): StaticFileHandler = apply(root, false)
   def apply(root: String, devMode: Boolean): StaticFileHandler = apply(new File(root), devMode)

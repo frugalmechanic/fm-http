@@ -16,13 +16,13 @@
 package fm.http
 
 import fm.common.Implicits._
-import fm.common.{Base64, IndexedSeqProxy}
+import fm.common.{Base64, ImmutableDate, IndexedSeqProxy}
 import java.nio.charset.StandardCharsets
 import java.util.Date
 import io.netty.handler.codec.http.{DefaultHttpHeaders, HttpHeaders}
 import io.netty.handler.codec.http.cookie.{ClientCookieEncoder, ServerCookieEncoder}
-import org.joda.time.{DateTime, DateTimeZone}
-import org.joda.time.format.{DateTimeFormat, DateTimeFormatter}
+import java.time._
+import java.time.format.DateTimeFormatter
 import scala.collection.JavaConverters._
 import scala.util.Try
 import scala.util.matching.Regex
@@ -47,15 +47,21 @@ object Headers {
     ImmutableHeaders(headers.nettyHeaders)
   }
   
-  private[this] val RFC1123: DateTimeFormatter = DateTimeFormat.forPattern("EEE, dd MMM yyyy HH:mm:ss z")
-  private[http] def formatDate(): String = formatDate(DateTime.now)
-  private[http] def formatDate(millis: Long): String = formatDate(new DateTime(millis))
-  private[http] def formatDate(date: DateTime): String = date.withZone(DateTimeZone.UTC).toString(RFC1123)
+  private[this] val RFC1123: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss z")
+  private[http] def formatDate(): String = formatDate(OffsetDateTime.now)
+  private[http] def formatDate(millis: Long): String = formatDate(Instant.ofEpochMilli(millis))
+  private[http] def formatDate(date: Date): String = formatDate(date.toInstant)
+  private[http] def formatDate(date: ImmutableDate): String = formatDate(date.toInstant)
+  private[http] def formatDate(date: ZonedDateTime): String = formatDate(date.toOffsetDateTime)
+  private[http] def formatDate(date: Instant): String = formatDate(OffsetDateTime.ofInstant(date, ZoneOffset.UTC))
+  private[http] def formatDate(date: LocalDateTime): String = formatDate(date.atZone(ZoneId.systemDefault()))
+
+  private[http] def formatDate(date: OffsetDateTime): String = date.atZoneSameInstant(ZoneOffset.UTC).format(RFC1123)
   
-  private[http] def parseDate(s: String): Option[DateTime] = {
+  private[http] def parseOffsetDateTime(s: String): Option[OffsetDateTime] = {
     if (s.isBlank) return None
     val cleaned: String = if(s.contains(";")) s.substring(0, s.indexOf(";")) else s
-    Try{ RFC1123.parseDateTime(cleaned) }.toOption
+    Try{ OffsetDateTime.parse(cleaned, RFC1123) }.toOption
   }
 
   // A very very simple Regex for parsing the filename from the Content-Disposition Header
@@ -196,7 +202,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   def getAll(name: String): Vector[String] = nettyHeaders.getAll(name).asScala.toVector
   
   def getBool(name: String): Option[Boolean] = get(name).flatMap{ _.parseBoolean }
-  def getDate(name: String): Option[DateTime] = get(name).flatMap{ parseDate }
+  def getOffsetDateTime(name: String): Option[OffsetDateTime] = get(name).flatMap{ parseOffsetDateTime }
   def getInt(name: String): Option[Int] = get(name).flatMap{ _.toIntOption }
   def getLong(name: String): Option[Long] = get(name).flatMap{ _.toLongOption }
   
@@ -257,18 +263,18 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   /** These are the client side cookies that are being sent with the request */
   def cookies: Vector[Cookie] = cookie.map{ Cookie.tryParseCookieHeader }.getOrElse{ Vector.empty }
   
-  def date: Option[DateTime] = getDate(Names.DATE)
+  def date: Option[OffsetDateTime] = getOffsetDateTime(Names.DATE)
   def eTag: Option[String] = get(Names.ETAG)
   def expect: Option[String] = get(Names.EXPECT)
-  def expires: Option[DateTime] = getDate(Names.EXPIRES)
+  def expires: Option[OffsetDateTime] = getOffsetDateTime(Names.EXPIRES)
   def from: Option[String] = get(Names.FROM)
   def host: Option[String] = get(Names.HOST)
   def ifMatch: Option[String] = get(Names.IF_MATCH)
-  def ifModifiedSince: Option[DateTime] = getDate(Names.IF_MODIFIED_SINCE)
+  def ifModifiedSince: Option[OffsetDateTime] = getOffsetDateTime(Names.IF_MODIFIED_SINCE)
   def ifNoneMatch: Option[String] = get(Names.IF_NONE_MATCH)
   def ifRange: Option[String] = get(Names.IF_RANGE)
-  def ifUnmodifiedSince: Option[DateTime] = getDate(Names.IF_UNMODIFIED_SINCE)
-  def lastModified: Option[DateTime] = getDate(Names.LAST_MODIFIED)
+  def ifUnmodifiedSince: Option[OffsetDateTime] = getOffsetDateTime(Names.IF_UNMODIFIED_SINCE)
+  def lastModified: Option[OffsetDateTime] = getOffsetDateTime(Names.LAST_MODIFIED)
   def location: Option[String] = get(Names.LOCATION)
   def maxForwards: Option[String] = get(Names.MAX_FORWARDS)
   def origin: Option[String] = get(Names.ORIGIN)
@@ -377,14 +383,14 @@ final case class ImmutableHeaders(nettyHeaders: HttpHeaders) extends Headers {
 final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeaders(false /* don't validate */)) extends Headers {
   import Headers._
   import HttpHeaders.Names
-  
+
   def add(name: String, value: String): Unit = add(name, Option(value))
-  
+
   def add(name: String, value: Option[String]): Unit = value match {
     case Some(v) => nettyHeaders.add(name, v)
     case None    => // Don't add
   }
-  
+
   def set(name: String, value: String): Unit = set(name, Option(value))
 
   def set(name: String, value: Option[String]): Unit = value match {
@@ -396,33 +402,52 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
     nettyHeaders.remove(name)
     values.foreach{ add(name, _) }
   }
-  
+
   def setAll(name: String, values: Option[Traversable[String]]): Unit = setAll(name, values.getOrElse{ Nil })
-  
-  def setDate(name: String, value: DateTime): Unit = setDate(name, Option(value))
-  def setDate(name: String, value: Option[DateTime]): Unit = set(name, value.map{ formatDate })
-  
+
+  def setDate(name: String, value: Date): Unit = setDate(name, Option(value))
+  def setDate(name: String, value: Option[Date]): Unit = set(name, value.map{ formatDate })
+
+  def setImmutableDate(name: String, value: ImmutableDate): Unit = setImmutableDate(name, Option(value))
+  def setImmutableDate(name: String, value: Option[ImmutableDate]): Unit = set(name, value.map{ formatDate })
+
+  def setOffsetDateTime(name: String, value: OffsetDateTime): Unit = setOffsetDateTime(name, Option(value))
+  def setOffsetDateTime(name: String, value: Option[OffsetDateTime]): Unit = set(name, value.map{ formatDate })
+
+  def setZonedDateDate(name: String, value: ZonedDateTime): Unit = setZonedDateDate(name, Option(value))
+  def setZonedDateDate(name: String, value: Option[ZonedDateTime]): Unit = set(name, value.map{ formatDate })
+
+  def setInstant(name: String, value: Instant): Unit = setInstant(name, Option(value))
+  def setInstant(name: String, value: Option[Instant]): Unit = set(name, value.map{ formatDate })
+
+  def setLocalDateTime(name: String, value: LocalDateTime): Unit = setLocalDateTime(name, Option(value))
+  def setLocalDateTime(name: String, value: Option[LocalDateTime]): Unit = set(name, value.map{ formatDate })
+
   def setInt(name: String, value: Int): Unit = set(name, value.toString)
   def setInt(name: String, value: Option[Int]): Unit = set(name, value.map{ _.toString })
-  
+
   def setLong(name: String, value: Long): Unit = set(name, value.toString)
   def setLong(name: String, value: Option[Long]): Unit = set(name, value.map{ _.toString })
-  
+
   def withHeaders(headerValues: (String, Any)*): MutableHeaders = {
     headerValues.foreach { case (name, value) =>
       value match {
         case str: String => set(name, str)
-        case date: DateTime => setDate(name, date)
-        case date: Date => setDate(name, new DateTime(date.getTime()))
+        case date: Date => setDate(name, date)
+        case date: ImmutableDate => setImmutableDate(name, date)
+        case date: OffsetDateTime => setOffsetDateTime(name, date)
+        case date: ZonedDateTime => setZonedDateDate(name, date)
+        case date: Instant => setInstant(name, date)
+        case date: LocalDateTime => setLocalDateTime(name, date)
         case int: Int => setInt(name, int)
         case long: Long => setLong(name, long)
         case _ => throw new IllegalArgumentException("Unknown Headers value type: "+value)
       }
     }
-    
+
     this
   }
-  
+
   def withNoCache: MutableHeaders = {
     // http://stackoverflow.com/a/2068407
     cacheControl = "no-cache, no-store, must-revalidate"
@@ -430,74 +455,74 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
     expires = "0"
     this
   }
-  
+
   def withCookies(c: Traversable[Cookie]): MutableHeaders = {
     cookies = c
     this
   }
-  
+
   def withSetCookies(c: Traversable[Cookie]): MutableHeaders = {
     setCookies = c
     this
   }
-  
+
   def accept_=(v: String): Unit = set(Names.ACCEPT, v)
   def accept_=(v: Option[String]): Unit = set(Names.ACCEPT, v)
-  
+
   def acceptCharset_=(v: String): Unit = set(Names.ACCEPT_CHARSET, v)
   def acceptCharset_=(v: Option[String]): Unit = set(Names.ACCEPT_CHARSET, v)
-  
+
   def acceptEncoding_=(v: String): Unit = set(Names.ACCEPT_ENCODING, v)
   def acceptEncoding_=(v: Option[String]): Unit = set(Names.ACCEPT_ENCODING, v)
-  
+
   def acceptLanguage_=(v: String): Unit = set(Names.ACCEPT_LANGUAGE, v)
   def acceptLanguage_=(v: Option[String]): Unit = set(Names.ACCEPT_LANGUAGE, v)
-  
+
   def acceptPatch_=(v: String): Unit = set(Names.ACCEPT_PATCH, v)
   def acceptPatch_=(v: Option[String]): Unit = set(Names.ACCEPT_PATCH, v)
-  
+
   def acceptRanges_=(v: String): Unit = set(Names.ACCEPT_RANGES, v)
   def acceptRanges_=(v: Option[String]): Unit = set(Names.ACCEPT_RANGES, v)
-  
+
   def accessControlAllowCredentials_=(v: String): Unit = set(Names.ACCESS_CONTROL_ALLOW_CREDENTIALS, v)
   def accessControlAllowCredentials_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_ALLOW_CREDENTIALS, v)
-  
+
   def accessControlAllowHeaders_=(v: String): Unit = set(Names.ACCESS_CONTROL_ALLOW_HEADERS, v)
   def accessControlAllowHeaders_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_ALLOW_HEADERS, v)
-  
+
   def accessControlAllowMethods_=(v: String): Unit = set(Names.ACCESS_CONTROL_ALLOW_METHODS, v)
   def accessControlAllowMethods_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_ALLOW_METHODS, v)
-  
+
   def accessControlAllowOrigin_=(v: String): Unit = set(Names.ACCESS_CONTROL_ALLOW_ORIGIN, v)
   def accessControlAllowOrigin_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_ALLOW_ORIGIN, v)
-  
+
   def accessControlExposeHeaders_=(v: String): Unit = set(Names.ACCESS_CONTROL_EXPOSE_HEADERS, v)
   def accessControlExposeHeaders_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_EXPOSE_HEADERS, v)
-  
+
   def accessControlMaxAge_=(v: String): Unit = set(Names.ACCESS_CONTROL_MAX_AGE, v)
   def accessControlMaxAge_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_MAX_AGE, v)
-  
+
   def accessControlRequestHEaders_=(v: String): Unit = set(Names.ACCESS_CONTROL_REQUEST_HEADERS, v)
   def accessControlRequestHEaders_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_REQUEST_HEADERS, v)
-  
+
   def accessControlRequestMethod_=(v: String): Unit = set(Names.ACCESS_CONTROL_REQUEST_METHOD, v)
   def accessControlRequestMethod_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_REQUEST_METHOD, v)
-  
+
   def age_=(v: Long): Unit = setLong(Names.AGE, v)
   def age_=(v: Option[Long]): Unit = setLong(Names.AGE, v)
-  
+
   def allow_=(v: String): Unit = set(Names.ALLOW, v)
   def allow_=(v: Option[String]): Unit = set(Names.ALLOW, v)
-  
+
   def authorization_=(v: String): Unit = set(Names.AUTHORIZATION, v)
   def authorization_=(v: Option[String]): Unit = set(Names.AUTHORIZATION, v)
-  
+
   def cacheControl_=(v: String): Unit = set(Names.CACHE_CONTROL, v)
   def cacheControl_=(v: Option[String]): Unit = set(Names.CACHE_CONTROL, v)
-  
+
   def connection_=(v: String): Unit = set(Names.CONNECTION, v)
   def connection_=(v: Option[String]): Unit = set(Names.CONNECTION, v)
-  
+
   def contentBase_=(v: String): Unit = set(Names.CONTENT_BASE, v)
   def contentBase_=(v: Option[String]): Unit = set(Names.CONTENT_BASE, v)
 
@@ -509,201 +534,201 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
 
   def contentEncoding_=(v: String): Unit = set(Names.CONTENT_ENCODING, v)
   def contentEncoding_=(v: Option[String]): Unit = set(Names.CONTENT_ENCODING, v)
-  
+
   def contentLanguage_=(v: String): Unit = set(Names.CONTENT_LANGUAGE, v)
   def contentLanguage_=(v: Option[String]): Unit = set(Names.CONTENT_LANGUAGE, v)
-  
+
   def contentLength_=(v: Long): Unit = setLong(Names.CONTENT_LENGTH, v)
   def contentLength_=(v: Option[Long]): Unit = setLong(Names.CONTENT_LENGTH, v)
-  
+
   def contentLocation_=(v: String): Unit = set(Names.CONTENT_LOCATION, v)
   def contentLocation_=(v: Option[String]): Unit = set(Names.CONTENT_LOCATION, v)
-  
+
   def contentMD5_=(v: String): Unit = set(Names.CONTENT_MD5, v)
   def contentMD5_=(v: Option[String]): Unit = set(Names.CONTENT_MD5, v)
-  
+
   def contentRange_=(v: String): Unit = set(Names.CONTENT_RANGE, v)
   def contentRange_=(v: Option[String]): Unit = set(Names.CONTENT_RANGE, v)
-  
+
   def contentTransferEncoding_=(v: String): Unit = set(Names.CONTENT_TRANSFER_ENCODING, v)
   def contentTransferEncoding_=(v: Option[String]): Unit = set(Names.CONTENT_TRANSFER_ENCODING, v)
-  
+
   def contentType_=(v: String): Unit = set(Names.CONTENT_TYPE, v)
   def contentType_=(v: Option[String]): Unit = set(Names.CONTENT_TYPE, v)
-  
+
   def cookie_=(v: String): Unit = set(Names.COOKIE, v)
   def cookie_=(v: Option[String]): Unit = set(Names.COOKIE, v)
-  
+
   def cookies_=(v: Traversable[Cookie]): Unit = cookie = if (v.nonEmpty) Some(ClientCookieEncoder.LAX.encode(v.toSeq.map{ _.toNettyCookie }.asJava)) else None
   def cookies_=(v: Option[Traversable[Cookie]]): Unit = cookies = v.getOrElse{ Nil }
-  
-  def date_=(v: DateTime): Unit = setDate(Names.DATE, v)
-  def date_=(v: Option[DateTime]): Unit = setDate(Names.DATE, v)
-  
+
+  def date_=(v: OffsetDateTime): Unit = setOffsetDateTime(Names.DATE, v)
+  def date_=(v: Option[OffsetDateTime]): Unit = setOffsetDateTime(Names.DATE, v)
+
   def eTag_=(v: String): Unit = set(Names.ETAG, v)
   def eTag_=(v: Option[String]): Unit = set(Names.ETAG, v)
-  
+
   def expect_=(v: String): Unit = set(Names.EXPECT, v)
   def expect_=(v: Option[String]): Unit = set(Names.EXPECT, v)
-  
+
   def expires_=(v: String): Unit = set(Names.EXPIRES, v)
-  def expires_=(v: DateTime): Unit = setDate(Names.EXPIRES, v)
-  def expires_=(v: Option[DateTime]): Unit = setDate(Names.EXPIRES, v)
-  
+  def expires_=(v: OffsetDateTime): Unit = setOffsetDateTime(Names.EXPIRES, v)
+  def expires_=(v: Option[OffsetDateTime]): Unit = setOffsetDateTime(Names.EXPIRES, v)
+
   def from_=(v: String): Unit = set(Names.FROM, v)
   def from_=(v: Option[String]): Unit = set(Names.FROM, v)
-  
+
   def host_=(v: String): Unit = set(Names.HOST, v)
   def host_=(v: Option[String]): Unit = set(Names.HOST, v)
-  
+
   def ifMatch_=(v: String): Unit = set(Names.IF_MATCH, v)
   def ifMatch_=(v: Option[String]): Unit = set(Names.IF_MATCH, v)
-  
-  def ifModifiedSince_=(v: DateTime): Unit = setDate(Names.IF_MODIFIED_SINCE, v)
-  def ifModifiedSince_=(v: Option[DateTime]): Unit = setDate(Names.IF_MODIFIED_SINCE, v)
-  
+
+  def ifModifiedSince_=(v: OffsetDateTime): Unit = setOffsetDateTime(Names.IF_MODIFIED_SINCE, v)
+  def ifModifiedSince_=(v: Option[OffsetDateTime]): Unit = setOffsetDateTime(Names.IF_MODIFIED_SINCE, v)
+
   def ifNoneMatch_=(v: String): Unit = set(Names.IF_NONE_MATCH, v)
   def ifNoneMatch_=(v: Option[String]): Unit = set(Names.IF_NONE_MATCH, v)
-  
+
   def ifRange_=(v: String): Unit = set(Names.IF_RANGE, v)
   def ifRange_=(v: Option[String]): Unit = set(Names.IF_RANGE, v)
-  
-  def ifUnmodifiedSince_=(v: DateTime): Unit = setDate(Names.IF_UNMODIFIED_SINCE, v)
-  def ifUnmodifiedSince_=(v: Option[DateTime]): Unit = setDate(Names.IF_UNMODIFIED_SINCE, v)
-  
-  def lastModified_=(v: DateTime): Unit = setDate(Names.LAST_MODIFIED, v)
-  def lastModified_=(v: Option[DateTime]): Unit = setDate(Names.LAST_MODIFIED, v)
-  
+
+  def ifUnmodifiedSince_=(v: OffsetDateTime): Unit = setOffsetDateTime(Names.IF_UNMODIFIED_SINCE, v)
+  def ifUnmodifiedSince_=(v: Option[OffsetDateTime]): Unit = setOffsetDateTime(Names.IF_UNMODIFIED_SINCE, v)
+
+  def lastModified_=(v: OffsetDateTime): Unit = setOffsetDateTime(Names.LAST_MODIFIED, v)
+  def lastModified_=(v: Option[OffsetDateTime]): Unit = setOffsetDateTime(Names.LAST_MODIFIED, v)
+
   def location_=(v: String): Unit = set(Names.LOCATION, v)
   def location_=(v: Option[String]): Unit = set(Names.LOCATION, v)
-  
+
   def maxForwards_=(v: String): Unit = set(Names.MAX_FORWARDS, v)
   def maxForwards_=(v: Option[String]): Unit = set(Names.MAX_FORWARDS, v)
-  
+
   def origin_=(v: String): Unit = set(Names.ORIGIN, v)
   def origin_=(v: Option[String]): Unit = set(Names.ORIGIN, v)
-  
+
   def pragma_=(v: String): Unit = set(Names.PRAGMA, v)
   def pragma_=(v: Option[String]): Unit = set(Names.PRAGMA, v)
-  
+
   def proxyAuthencate_=(v: String): Unit = set(Names.PROXY_AUTHENTICATE, v)
   def proxyAuthencate_=(v: Option[String]): Unit = set(Names.PROXY_AUTHENTICATE, v)
-  
+
   def proxyAuthorization_=(v: String): Unit = set(Names.PROXY_AUTHORIZATION, v)
   def proxyAuthorization_=(v: Option[String]): Unit = set(Names.PROXY_AUTHORIZATION, v)
-  
+
   def range_=(v: String): Unit = set(Names.RANGE, v)
   def range_=(v: Option[String]): Unit = set(Names.RANGE, v)
-  
+
   def referer_=(v: String): Unit = set(Names.REFERER, v)
   def referer_=(v: Option[String]): Unit = set(Names.REFERER, v)
-  
+
   def retryAfter_=(v: String): Unit = set(Names.RETRY_AFTER, v)
   def retryAfter_=(v: Option[String]): Unit = set(Names.RETRY_AFTER, v)
-  
+
   def secWebSocketAccept_=(v: String): Unit = set(Names.SEC_WEBSOCKET_ACCEPT, v)
   def secWebSocketAccept_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_ACCEPT, v)
-  
+
   def secWebSocketKey_=(v: String): Unit = set(Names.SEC_WEBSOCKET_KEY, v)
   def secWebSocketKey_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_KEY, v)
-  
+
   def secWebSocketKey1_=(v: String): Unit = set(Names.SEC_WEBSOCKET_KEY1, v)
   def secWebSocketKey1_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_KEY1, v)
-  
+
   def secWebSocketKey2_=(v: String): Unit = set(Names.SEC_WEBSOCKET_KEY2, v)
   def secWebSocketKey2_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_KEY2, v)
-  
+
   def secWebSocketLocation_=(v: String): Unit = set(Names.SEC_WEBSOCKET_LOCATION, v)
   def secWebSocketLocation_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_LOCATION, v)
-  
+
   def secWebSocketOrigin_=(v: String): Unit = set(Names.SEC_WEBSOCKET_ORIGIN, v)
   def secWebSocketOrigin_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_ORIGIN, v)
-  
+
   def secWebSocketProtocol_=(v: String): Unit = set(Names.SEC_WEBSOCKET_PROTOCOL, v)
   def secWebSocketProtocol_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_PROTOCOL, v)
-  
+
   def secWebSocketVersion_=(v: String): Unit = set(Names.SEC_WEBSOCKET_VERSION, v)
   def secWebSocketVersion_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_VERSION, v)
-  
+
   def server_=(v: String): Unit = set(Names.SERVER, v)
   def server_=(v: Option[String]): Unit = set(Names.SERVER, v)
-  
+
   def setCookie_=(v: Traversable[String]): Unit = setAll(Names.SET_COOKIE, v)
   def setCookie_=(v: Option[Traversable[String]]): Unit = setAll(Names.SET_COOKIE, v)
-  
+
   def setCookies_=(v: Traversable[Cookie]): Unit = setCookie = if (v.nonEmpty) Some(v.toSeq.map{ c: Cookie => ServerCookieEncoder.LAX.encode(c.toNettyCookie) }) else None
   def setCookies_=(v: Option[Traversable[Cookie]]): Unit = setCookies = v.getOrElse{ Nil }
-  
+
   def setCookie2_=(v: Traversable[String]): Unit = setAll(Names.SET_COOKIE2, v)
   def setCookie2_=(v: Option[Traversable[String]]): Unit = setAll(Names.SET_COOKIE2, v)
-  
+
   def te_=(v: String): Unit = set(Names.TE, v)
   def te_=(v: Option[String]): Unit = set(Names.TE, v)
-  
+
   def trailer_=(v: String): Unit = set(Names.TRAILER, v)
   def trailer_=(v: Option[String]): Unit = set(Names.TRAILER, v)
-  
+
   def transferEncoding_=(v: String): Unit = set(Names.TRANSFER_ENCODING, v)
   def transferEncoding_=(v: Option[String]): Unit = set(Names.TRANSFER_ENCODING, v)
-  
+
   def upgrade_=(v: String): Unit = set(Names.UPGRADE, v)
   def upgrade_=(v: Option[String]): Unit = set(Names.UPGRADE, v)
-  
+
   def userAgent_=(v: String): Unit = set(Names.USER_AGENT, v)
   def userAgent_=(v: Option[String]): Unit = set(Names.USER_AGENT, v)
-  
+
   def vary_=(v: String): Unit = set(Names.VARY, v)
   def vary_=(v: Option[String]): Unit = set(Names.VARY, v)
-  
+
   def via_=(v: String): Unit = set(Names.VIA, v)
   def via_=(v: Option[String]): Unit = set(Names.VIA, v)
-  
+
   def warning_=(v: String): Unit = set(Names.WARNING, v)
   def warning_=(v: Option[String]): Unit = set(Names.WARNING, v)
-  
+
   def webSocketLocation_=(v: String): Unit = set(Names.WEBSOCKET_LOCATION, v)
   def webSocketLocation_=(v: Option[String]): Unit = set(Names.WEBSOCKET_LOCATION, v)
-  
+
   def webSocketOrigin_=(v: String): Unit = set(Names.WEBSOCKET_ORIGIN, v)
   def webSocketOrigin_=(v: Option[String]): Unit = set(Names.WEBSOCKET_ORIGIN, v)
-  
+
   def webSocketProtocol_=(v: String): Unit = set(Names.WEBSOCKET_PROTOCOL, v)
   def webSocketProtocol_=(v: Option[String]): Unit = set(Names.WEBSOCKET_PROTOCOL, v)
-  
+
   def wwwAuthenticate_=(v: String): Unit = set(Names.WWW_AUTHENTICATE, v)
   def wwwAuthenticate_=(v: Option[String]): Unit = set(Names.WWW_AUTHENTICATE, v)
 
-  
+
   //
   // Non-Standard
   //
   def dnt_=(v: String): Unit = set(NonStandardNames.DNT, v)
   def dnt_=(v: Option[String]): Unit = set(NonStandardNames.DNT, v)
-  
+
   def xRequestedWith_=(v: String): Unit = set(NonStandardNames.X_REQUESTED_WITH, v)
   def xRequestedWith_=(v: Option[String]): Unit = set(NonStandardNames.X_REQUESTED_WITH, v)
-  
+
   def xForwardedFor_=(v: String): Unit = set(NonStandardNames.X_FORWARDED_FOR, v)
   def xForwardedFor_=(v: Option[String]): Unit = set(NonStandardNames.X_FORWARDED_FOR, v)
-  
+
   def xForwardedProto_=(v: String): Unit = set(NonStandardNames.X_FORWARDED_PROTO, v)
   def xForwardedProto_=(v: Option[String]): Unit = set(NonStandardNames.X_FORWARDED_PROTO, v)
-  
+
   def xFrameOptions_=(v: String): Unit = set(NonStandardNames.X_FRAME_OPTIONS, v)
   def xFrameOptions_=(v: Option[String]): Unit = set(NonStandardNames.X_FRAME_OPTIONS, v)
-  
+
   def xXSSProtection_=(v: String): Unit = set(NonStandardNames.X_XSS_PROTECTION, v)
   def xXSSProtection_=(v: Option[String]): Unit = set(NonStandardNames.X_XSS_PROTECTION, v)
-  
+
   def xContentTypeOptions_=(v: String): Unit = set(NonStandardNames.X_CONTENT_TYPE_OPTIONS, v)
   def xContentTypeOptions_=(v: Option[String]): Unit = set(NonStandardNames.X_CONTENT_TYPE_OPTIONS, v)
-  
+
   def xPoweredBy_=(v: String): Unit = set(NonStandardNames.X_POWERED_BY, v)
   def xPoweredBy_=(v: Option[String]): Unit = set(NonStandardNames.X_POWERED_BY, v)
-  
+
   def xUACompatible_=(v: String): Unit = set(NonStandardNames.X_UA_COMPATIBLE, v)
   def xUACompatible_=(v: Option[String]): Unit = set(NonStandardNames.X_UA_COMPATIBLE, v)
-  
+
   //
   // Authorization
   //

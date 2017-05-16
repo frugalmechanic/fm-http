@@ -20,7 +20,7 @@ import fm.common.{ClassUtil, Logging}
 import fm.http.{MimeTypes, MutableHeaders, Status}
 import java.io.File
 import java.net.{URL, URLConnection}
-import org.joda.time.DateTime
+import java.time.{Instant, OffsetDateTime, ZoneOffset}
 import scala.collection.JavaConverters._
 
 object StaticClasspathFileHandler {
@@ -72,20 +72,20 @@ final case class StaticClasspathFileHandler(roots: Seq[File], devMode: Boolean, 
     val conn: URLConnection = url.openConnection()
     
     val headers: MutableHeaders = MutableHeaders()
-    headers.date = DateTime.now
+    headers.date = OffsetDateTime.now
     
-    val ifModifiedSince: Option[DateTime] = request.headers.ifModifiedSince
+    val ifModifiedSince: Option[OffsetDateTime] = request.headers.ifModifiedSince
     
-    if (ifModifiedSince.exists{ _.getMillis() === conn.getLastModified() }) {
+    if (ifModifiedSince.exists{ _.toInstant.toEpochMilli === conn.getLastModified() }) {
       return Some(RequestHandler.constant(Response.NotModified(headers)))
     }
     
     // We don't want these headers returned with a 304 Not Modified response:
     // http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.3.5
     headers.contentType = MimeTypes.forFile(f).getOrElse(MimeTypes.BINARY)
-    headers.lastModified = new DateTime(conn.getLastModified())
+    headers.lastModified = OffsetDateTime.ofInstant(Instant.ofEpochMilli(conn.getLastModified()), ZoneOffset.UTC)
     headers.cacheControl = "public, max-age="+expirationSeconds
-    headers.expires = DateTime.now().plusSeconds(expirationSeconds)
+    headers.expires = OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(expirationSeconds)
     
     val contentLength: Option[Long] = Some(conn.getContentLengthLong()).filter{ _ >= 0 }
 
