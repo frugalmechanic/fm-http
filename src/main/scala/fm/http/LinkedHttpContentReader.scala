@@ -179,7 +179,4 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   } catch {
     case ex: Exception => // ok
   }
-  
-  override protected def finalize(): Unit = close()
-  
 }

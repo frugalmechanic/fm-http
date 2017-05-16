@@ -147,6 +147,4 @@ final class AsyncResponse (response: HttpResponse, content: LinkedHttpContentRea
     body.foreach{ _.close() }
     if (null == t) completedPromise.trySuccess(()) else completedPromise.tryFailure(t)
   }
-  
-  override protected def finalize(): Unit = close()
 }

@@ -157,6 +157,4 @@ final class Request (
       }
     }
   }
-  
-  override protected def finalize(): Unit = close()
 }
