@@ -172,8 +172,6 @@ final case class DefaultHttpClient(
     
     execute0(r.url, r, timeout).flatMap { response: AsyncResponse =>
       if (response.status === Status.MOVED_PERMANENTLY || response.status === Status.FOUND) {
-        val location: Option[URI] = response.headers.location.flatMap{ URI.get }
-        
         response.headers.location.flatMap{ URI.get }.map{ location: URI =>
           
           // Allow for a relative URL
@@ -304,7 +302,7 @@ final case class DefaultHttpClient(
   
   private def makeNewChannel(p: EndPoint)(pool: ChannelPool): Future[Channel] = makeNewChannel(p.host, p.port, p.ssl, p.socksProxy)(pool)
   
-  private def makeNewChannel(host: String, port: Int, ssl: Boolean, socksProxy: Option[(String, Int)] = None)(pool: ChannelPool): Future[Channel] = {
+  private def makeNewChannel(host: String, port: Int, ssl: Boolean, socksProxy: Option[(String, Int)])(pool: ChannelPool): Future[Channel] = {
     val promise: Promise[Channel] = Promise()
     
     val bootstrap: Bootstrap = if (ssl) httpsBootstrap(host, port) else httpBootstrap

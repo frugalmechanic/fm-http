@@ -115,7 +115,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
    * This is an asynchronous foreach where 'f' is called for each ByteBuf as the data is available.
    * @return A future is returned that is completed when 'f' has been called for each chunk.
    */
-  def foreach[U](f: ByteBuf => U): Future[Unit] = foldLeft[Unit](){ (unit, buf) => f(buf) }.map{ _ => Unit }
+  def foreach[U](f: ByteBuf => U): Future[Unit] = foldLeft[Unit](()){ (_, buf) => f(buf) }.map{ _ => Unit }
   
   /**
    * This is an asynchronous foldLeft where op is called only when the chunks are ready.
@@ -166,7 +166,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   }
 
   def discardContent(): Future[Unit] = {
-    foldLeft(){ (_, buf) => Unit }
+    foldLeft(()){ (_, buf) => Unit }
   }
 
   // TODO: Does this really need to return a Future[Unit]?

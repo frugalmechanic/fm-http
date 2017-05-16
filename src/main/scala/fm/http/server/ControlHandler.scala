@@ -22,7 +22,6 @@ import scala.concurrent.Future
 
 object ControlHandler {
   private def Ok = Future.successful(Response(Status.OK, "ok"))
-  private def Enabled = Future.successful(Response(Status.OK, "enabled"))
   private def Disabled = Future.successful(Response(Status.SERVICE_UNAVAILABLE, "disabled"))
   private def NotAuthorized = Future.successful(Response(Status.FORBIDDEN, "invalid authorization"))
 }

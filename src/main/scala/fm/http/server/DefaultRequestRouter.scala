@@ -16,15 +16,13 @@
 package fm.http.server
 
 import scala.concurrent.Future
-import fm.http.Status
 
 abstract class DefaultRequestRouter extends RequestRouterBase with RequestHandler {
 
   protected val handler: PartialFunction[Request, Future[Response]]
   
   private[this] val thisHandler: Option[RequestHandler] = Some(this)
-  private def defaultResponse(request: Request): Future[Response] = Future.successful{ Response(Status.NOT_FOUND) }
-  
+
   final def lookup(request: Request): Option[RequestHandler] = if (handler.isDefinedAt(request)) thisHandler else None 
   final def apply(request: Request): Future[Response] = handler(request)
 }
