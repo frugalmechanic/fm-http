@@ -15,12 +15,13 @@
  */
 package fm.http.server
 
+import fm.common.ImmutableDate
 import fm.common.Implicits._
 import fm.http.{MimeTypes, MutableHeaders, Status}
 import java.io.File
 import java.util.regex.{Matcher, Pattern}
 import io.netty.handler.codec.http.HttpMethod
-import java.time.{Instant, OffsetDateTime, ZoneOffset}
+import scala.concurrent.duration._
 
 trait StaticFileHandlerBase extends RequestRouter {
   import StaticFileHandler.{expirationInSeconds, formattedTimestamp, indexFiles, versionedExprationInSeconds}
@@ -102,20 +103,20 @@ trait StaticFileHandlerBase extends RequestRouter {
     if (!isFileSystemFile(f)) return None
     
     val headers: MutableHeaders = MutableHeaders()
-    headers.date = OffsetDateTime.now(ZoneOffset.UTC)
+    headers.date = ImmutableDate.now
     
-    val ifModifiedSince: Option[OffsetDateTime] = request.headers.ifModifiedSince
+    val ifModifiedSince: Option[ImmutableDate] = request.headers.ifModifiedSince
     
-    if (ifModifiedSince.exists{ _.toInstant.toEpochMilli === f.lastModified() }) {
+    if (ifModifiedSince.exists{ _.millis === f.lastModified() }) {
       return Some(RequestHandler.constant(Response.NotModified(headers)))
     }
     
     // We don't want these headers returned with a 304 Not Modified response:
     // http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html#sec10.3.5
     headers.contentType = MimeTypes.forFile(f).getOrElse(MimeTypes.BINARY)
-    headers.lastModified = OffsetDateTime.ofInstant(Instant.ofEpochMilli(f.lastModified()), ZoneOffset.UTC)
+    headers.lastModified = ImmutableDate(f.lastModified())
     headers.cacheControl = "public, max-age="+expirationSeconds
-    headers.expires = OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(expirationSeconds)
+    headers.expires = ImmutableDate.now + expirationSeconds.seconds
 
     Some(RequestHandler.constant(FileResponse(Status.OK, headers, f)))
   }

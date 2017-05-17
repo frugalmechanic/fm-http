@@ -46,22 +46,31 @@ object Headers {
     // Convert to immutable headers - this is safe since we know we won't be touching the MutableHeaders again
     ImmutableHeaders(headers.nettyHeaders)
   }
+
+  private val GMT: ZoneId = ZoneId.of("GMT")
   
-  private[this] val RFC1123: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss z")
   private[http] def formatDate(): String = formatDate(OffsetDateTime.now)
   private[http] def formatDate(millis: Long): String = formatDate(Instant.ofEpochMilli(millis))
   private[http] def formatDate(date: Date): String = formatDate(date.toInstant)
   private[http] def formatDate(date: ImmutableDate): String = formatDate(date.toInstant)
-  private[http] def formatDate(date: ZonedDateTime): String = formatDate(date.toOffsetDateTime)
-  private[http] def formatDate(date: Instant): String = formatDate(OffsetDateTime.ofInstant(date, ZoneOffset.UTC))
+  private[http] def formatDate(date: OffsetDateTime): String = formatDate(date.toZonedDateTime)
+  private[http] def formatDate(date: Instant): String = formatDate(ZonedDateTime.ofInstant(date, GMT))
   private[http] def formatDate(date: LocalDateTime): String = formatDate(date.atZone(ZoneId.systemDefault()))
 
-  private[http] def formatDate(date: OffsetDateTime): String = date.atZoneSameInstant(ZoneOffset.UTC).format(RFC1123)
-  
-  private[http] def parseOffsetDateTime(s: String): Option[OffsetDateTime] = {
+  private[http] def formatDate(date: ZonedDateTime): String = {
+    date.withZoneSameInstant(GMT).format(DateTimeFormatter.RFC_1123_DATE_TIME)
+  }
+
+//  private[http] def parseZonedDateTime(s: String): Option[ZonedDateTime] = {
+//    if (s.isBlank) return None
+//    val cleaned: String = if(s.contains(";")) s.substring(0, s.indexOf(";")) else s
+//    Try{ ZonedDateTime.parse(cleaned, DateTimeFormatter.RFC_1123_DATE_TIME) }.toOption
+//  }
+
+  private[http] def parseImmutableDate(s: String): Option[ImmutableDate] = {
     if (s.isBlank) return None
     val cleaned: String = if(s.contains(";")) s.substring(0, s.indexOf(";")) else s
-    Try{ OffsetDateTime.parse(cleaned, RFC1123) }.toOption
+    Try{ ZonedDateTime.parse(cleaned, DateTimeFormatter.RFC_1123_DATE_TIME) }.toOption.map{ _.toInstant }.map{ ImmutableDate(_) }
   }
 
   // A very very simple Regex for parsing the filename from the Content-Disposition Header
@@ -202,7 +211,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   def getAll(name: String): Vector[String] = nettyHeaders.getAll(name).asScala.toVector
   
   def getBool(name: String): Option[Boolean] = get(name).flatMap{ _.parseBoolean }
-  def getOffsetDateTime(name: String): Option[OffsetDateTime] = get(name).flatMap{ parseOffsetDateTime }
+  def getDate(name: String): Option[ImmutableDate] = get(name).flatMap{ parseImmutableDate }
   def getInt(name: String): Option[Int] = get(name).flatMap{ _.toIntOption }
   def getLong(name: String): Option[Long] = get(name).flatMap{ _.toLongOption }
   
@@ -263,18 +272,18 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   /** These are the client side cookies that are being sent with the request */
   def cookies: Vector[Cookie] = cookie.map{ Cookie.tryParseCookieHeader }.getOrElse{ Vector.empty }
   
-  def date: Option[OffsetDateTime] = getOffsetDateTime(Names.DATE)
+  def date: Option[ImmutableDate] = getDate(Names.DATE)
   def eTag: Option[String] = get(Names.ETAG)
   def expect: Option[String] = get(Names.EXPECT)
-  def expires: Option[OffsetDateTime] = getOffsetDateTime(Names.EXPIRES)
+  def expires: Option[ImmutableDate] = getDate(Names.EXPIRES)
   def from: Option[String] = get(Names.FROM)
   def host: Option[String] = get(Names.HOST)
   def ifMatch: Option[String] = get(Names.IF_MATCH)
-  def ifModifiedSince: Option[OffsetDateTime] = getOffsetDateTime(Names.IF_MODIFIED_SINCE)
+  def ifModifiedSince: Option[ImmutableDate] = getDate(Names.IF_MODIFIED_SINCE)
   def ifNoneMatch: Option[String] = get(Names.IF_NONE_MATCH)
   def ifRange: Option[String] = get(Names.IF_RANGE)
-  def ifUnmodifiedSince: Option[OffsetDateTime] = getOffsetDateTime(Names.IF_UNMODIFIED_SINCE)
-  def lastModified: Option[OffsetDateTime] = getOffsetDateTime(Names.LAST_MODIFIED)
+  def ifUnmodifiedSince: Option[ImmutableDate] = getDate(Names.IF_UNMODIFIED_SINCE)
+  def lastModified: Option[ImmutableDate] = getDate(Names.LAST_MODIFIED)
   def location: Option[String] = get(Names.LOCATION)
   def maxForwards: Option[String] = get(Names.MAX_FORWARDS)
   def origin: Option[String] = get(Names.ORIGIN)
@@ -562,8 +571,8 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   def cookies_=(v: Traversable[Cookie]): Unit = cookie = if (v.nonEmpty) Some(ClientCookieEncoder.LAX.encode(v.toSeq.map{ _.toNettyCookie }.asJava)) else None
   def cookies_=(v: Option[Traversable[Cookie]]): Unit = cookies = v.getOrElse{ Nil }
 
-  def date_=(v: OffsetDateTime): Unit = setOffsetDateTime(Names.DATE, v)
-  def date_=(v: Option[OffsetDateTime]): Unit = setOffsetDateTime(Names.DATE, v)
+  def date_=(v: ImmutableDate): Unit = setImmutableDate(Names.DATE, v)
+  def date_=(v: Option[ImmutableDate]): Unit = setImmutableDate(Names.DATE, v)
 
   def eTag_=(v: String): Unit = set(Names.ETAG, v)
   def eTag_=(v: Option[String]): Unit = set(Names.ETAG, v)
@@ -572,8 +581,8 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   def expect_=(v: Option[String]): Unit = set(Names.EXPECT, v)
 
   def expires_=(v: String): Unit = set(Names.EXPIRES, v)
-  def expires_=(v: OffsetDateTime): Unit = setOffsetDateTime(Names.EXPIRES, v)
-  def expires_=(v: Option[OffsetDateTime]): Unit = setOffsetDateTime(Names.EXPIRES, v)
+  def expires_=(v: ImmutableDate): Unit = setImmutableDate(Names.EXPIRES, v)
+  def expires_=(v: Option[ImmutableDate]): Unit = setImmutableDate(Names.EXPIRES, v)
 
   def from_=(v: String): Unit = set(Names.FROM, v)
   def from_=(v: Option[String]): Unit = set(Names.FROM, v)
@@ -584,8 +593,8 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   def ifMatch_=(v: String): Unit = set(Names.IF_MATCH, v)
   def ifMatch_=(v: Option[String]): Unit = set(Names.IF_MATCH, v)
 
-  def ifModifiedSince_=(v: OffsetDateTime): Unit = setOffsetDateTime(Names.IF_MODIFIED_SINCE, v)
-  def ifModifiedSince_=(v: Option[OffsetDateTime]): Unit = setOffsetDateTime(Names.IF_MODIFIED_SINCE, v)
+  def ifModifiedSince_=(v: ImmutableDate): Unit = setImmutableDate(Names.IF_MODIFIED_SINCE, v)
+  def ifModifiedSince_=(v: Option[ImmutableDate]): Unit = setImmutableDate(Names.IF_MODIFIED_SINCE, v)
 
   def ifNoneMatch_=(v: String): Unit = set(Names.IF_NONE_MATCH, v)
   def ifNoneMatch_=(v: Option[String]): Unit = set(Names.IF_NONE_MATCH, v)
@@ -593,11 +602,11 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   def ifRange_=(v: String): Unit = set(Names.IF_RANGE, v)
   def ifRange_=(v: Option[String]): Unit = set(Names.IF_RANGE, v)
 
-  def ifUnmodifiedSince_=(v: OffsetDateTime): Unit = setOffsetDateTime(Names.IF_UNMODIFIED_SINCE, v)
-  def ifUnmodifiedSince_=(v: Option[OffsetDateTime]): Unit = setOffsetDateTime(Names.IF_UNMODIFIED_SINCE, v)
+  def ifUnmodifiedSince_=(v: ImmutableDate): Unit = setImmutableDate(Names.IF_UNMODIFIED_SINCE, v)
+  def ifUnmodifiedSince_=(v: Option[ImmutableDate]): Unit = setImmutableDate(Names.IF_UNMODIFIED_SINCE, v)
 
-  def lastModified_=(v: OffsetDateTime): Unit = setOffsetDateTime(Names.LAST_MODIFIED, v)
-  def lastModified_=(v: Option[OffsetDateTime]): Unit = setOffsetDateTime(Names.LAST_MODIFIED, v)
+  def lastModified_=(v: ImmutableDate): Unit = setImmutableDate(Names.LAST_MODIFIED, v)
+  def lastModified_=(v: Option[ImmutableDate]): Unit = setImmutableDate(Names.LAST_MODIFIED, v)
 
   def location_=(v: String): Unit = set(Names.LOCATION, v)
   def location_=(v: Option[String]): Unit = set(Names.LOCATION, v)
