@@ -48,7 +48,7 @@ object Request {
 }
 
 final class Request (
-  val remoteIp: IP, // The Remote IP making the request (possibly extracted from FM-Remote-IP or X-Forwarded-For)
+  val remoteIp: IP, // The Remote IP making the request (possibly extracted from X-Forwarded-For)
   request: HttpRequest,
   val content: LinkedHttpContentReader
 )(implicit execution: ExecutionContext) extends Logging with Closeable {

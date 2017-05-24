@@ -194,7 +194,7 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     import scala.collection.JavaConverters._
     import java.net.InetSocketAddress
     
-    Seq("FM-Remote-IP", "X-Forwarded-For").flatMap{ name: String =>
+    Seq("X-Forwarded-For").flatMap{ name: String =>
       // We only care about the last value for the Header (since HAProxy/Apache appends it's value)
       request.headers().getAll(name).asScala.flatMap{ IP.findAllIPsIn }.lastOption
     }.headOption.getOrElse{ IP(ctx.channel().remoteAddress().asInstanceOf[InetSocketAddress].getAddress) }
