@@ -15,14 +15,14 @@
  */
 package fm.http.server
 
-import fm.common.{IP, Logging, QueryParams}
+import fm.common.{IP, Logging, QueryParams, UUID}
 import fm.common.Implicits._
 import fm.http._
 import java.io.Closeable
 import java.util.IdentityHashMap
 import io.netty.handler.codec.http.{HttpHeaders, HttpMethod, HttpVersion}
 import io.netty.handler.codec.http.{DefaultHttpContent, DefaultHttpRequest, HttpRequest, LastHttpContent}
-import io.netty.handler.codec.http.multipart.{HttpPostRequestDecoder}
+import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
@@ -52,6 +52,11 @@ final class Request (
   request: HttpRequest,
   val content: LinkedHttpContentReader
 )(implicit execution: ExecutionContext) extends Logging with Closeable {
+
+  /**
+   * A fm.common.UUID that can be used to uniquely identify this request
+   */
+  val id: UUID = UUID()
   
   private[this] val completedPromise: Promise[Unit] = Promise()
   
