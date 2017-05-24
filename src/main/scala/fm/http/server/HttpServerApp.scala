@@ -39,6 +39,9 @@ abstract class HttpServerApp extends Logging {
   
   /** The email password to use (if using email logging)  */
   protected def EmailPass: String
+
+  /** Override to something like "X-Request-Id" to have the server set the request id in the response */
+  protected def requestIdResponseHeader: Option[String] = None
   
   private[this] val DETATCH_STRING: String = "\u0000"*4 // 4 NULL Characters
   private[this] val IS_CHILD_PROPERTY_KEY: String = "fm.webapp.is_child_process"
@@ -105,7 +108,11 @@ abstract class HttpServerApp extends Logging {
   /**
    * Run the Web Server
    */
-  private def doRun(ports: Set[Int], detatch: Boolean, emailLogging: Boolean): Unit = {    
+  private def doRun(ports: Set[Int], detatch: Boolean, emailLogging: Boolean): Unit = {
+    val options: HttpServerOptions = HttpServerOptions(
+      requestIdResponseHeader = requestIdResponseHeader
+    )
+
     // Figure out which port we should listen on    
     val (usedPorts, availPorts) = ports.partition{ alive }
     
@@ -115,7 +122,7 @@ abstract class HttpServerApp extends Logging {
     logger.info("Using Port: "+port)
     
     // Startup the Server
-    val server: HttpServer = HttpServer(port, router, AuthKey)
+    val server: HttpServer = HttpServer(port, router, AuthKey, options)
     
     // Check that the server is alive and responding
     assert(alive(port), "Server not alive?!")

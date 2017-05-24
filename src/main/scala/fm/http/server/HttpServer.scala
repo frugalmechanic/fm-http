@@ -59,7 +59,7 @@ object HttpServer {
   }
 }
 
-final case class HttpServer (port: Int = 8080, router: RequestRouter, authKey: String) extends Logging {
+final case class HttpServer (port: Int = 8080, router: RequestRouter, authKey: String, serverOptions: HttpServerOptions = HttpServerOptions.default) extends Logging {
   private[this] val name: String = s"WebServer on Port $port"
   private[this] val shutdownHookThread: Thread = new HttpServer.ShutdownHookThread(name, this)
   private[this] val controlHandler = ControlHandler(this, authKey)
@@ -99,7 +99,7 @@ final case class HttpServer (port: Int = 8080, router: RequestRouter, authKey: S
          p.addLast("encoder",       new HttpResponseEncoder())
          p.addLast("compressor",    new NettyContentCompressor())
          p.addLast("chunkedWriter", new ChunkedWriteHandler())
-         p.addLast("handler",       new NettyHttpServerPipelineHandler(allChannels, executionContext, completeRouter))
+         p.addLast("handler",       new NettyHttpServerPipelineHandler(allChannels, executionContext, completeRouter, serverOptions))
          
        }
     })

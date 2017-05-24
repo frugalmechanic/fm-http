@@ -59,7 +59,7 @@ object NettyHttpServerPipelineHandler {
 /**
  * Each connection has once instance of this Handler created which means it can be used to track state if needed.
  */
-final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, executionContext: ExecutionContext, router: RequestRouter) extends SimpleChannelInboundHandler[HttpObject] with Logging {
+final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, executionContext: ExecutionContext, router: RequestRouter, options: HttpServerOptions) extends SimpleChannelInboundHandler[HttpObject] with Logging {
   import NettyHttpServerPipelineHandler._
   
   private[this] val id: Long = ID.incrementAndGet()
@@ -213,7 +213,12 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     if (!request.isContentFullyRead && response.getStatus() === HttpResponseStatus.OK) {
       logger.warn("Sending a 200 response but the request body has not been fully read: "+request)
     }
-    
+
+    // Add in an X-Request-Id header if configured in the HttpServerOptions
+    options.requestIdResponseHeader.foreach { header: String =>
+      response.headers().add(header, request.id.toHex())
+    }
+
     response
   }
   
