@@ -17,9 +17,9 @@ package fm.http.server
 
 import com.frugalmechanic.optparse._
 import fm.common.Implicits._
-import fm.common.Logging
+import fm.common.{ConcurrentHashSet, Logging}
 import java.io.{BufferedReader, InputStreamReader, OutputStream, PrintStream}
-import java.net.{URL, HttpURLConnection}
+import java.net.{HttpURLConnection, URL}
 import java.lang.management.ManagementFactory
 import jnr.posix.POSIXFactory
 import jnr.posix.util.DefaultPOSIXHandler
@@ -57,7 +57,10 @@ abstract class HttpServerApp extends Logging {
     val port    = MultiStrOpt(desc="Which port to run on")
     val email   = BoolOpt(desc="Enable Email Logging")
   }
-  
+
+  // Keep track of servers that are created if this is a persistent app
+  private[this] val servers: ConcurrentHashSet[HttpServer] = new ConcurrentHashSet[HttpServer]
+
   def main(args: Array[String]): Unit = {
     // Exit on uncaught exceptions
     Thread.currentThread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler{
@@ -116,6 +119,9 @@ abstract class HttpServerApp extends Logging {
     
     // Startup the Server
     val server: HttpServer = HttpServer(port, router, AuthKey)
+
+    // Keep track of this server
+    servers += server
     
     // Check that the server is alive and responding
     assert(alive(port), "Server not alive?!")
@@ -151,6 +157,9 @@ abstract class HttpServerApp extends Logging {
 
     // Block until shutdown is requested
     server.awaitShutdown()
+
+    // Remove server
+    servers -= server
     
     // Shutdown Logging
     import ch.qos.logback.classic.LoggerContext
@@ -210,7 +219,12 @@ abstract class HttpServerApp extends Logging {
     
     args.result
   }
-  
+
+  // Global shutdown of all active servers if this is a child process
+  def shutdown(): Unit = {
+    servers.foreach{ _.shutdown() }
+  }
+
   def shutdownPorts(ports: Set[Int]): Unit = {
     ports.foreach{ shutdown }
 
