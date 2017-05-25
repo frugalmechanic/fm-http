@@ -19,6 +19,7 @@ import fm.common.{IP, Logging, QueryParams, UUID}
 import fm.common.Implicits._
 import fm.http._
 import java.io.Closeable
+import java.net.URLDecoder
 import java.util.IdentityHashMap
 import io.netty.handler.codec.http.{HttpHeaders, HttpMethod, HttpVersion}
 import io.netty.handler.codec.http.{DefaultHttpContent, DefaultHttpRequest, HttpRequest, LastHttpContent}
@@ -82,9 +83,14 @@ final class Request (
   def contentLength: Option[Long] = Option(HttpHeaders.getContentLength(request, -1)).filter{ _ >= 0 }
   
   /**
-   * The path that was requested (no query params, e.g. /path)
+   * The path that was requested (no query params, e.g. /path, and decoded "/Path%20With%20Spaces/" => "/Path With Spaces/")
    */
-  val path: String = {
+  val path: String = URLDecoder.decode(rawPath, "UTF-8")
+
+  /**
+   * The raw path that was requested (no query params, e.g. /path%20with%spaces/)
+   */
+  val rawPath: String = {
     // Strip off anything after the ?
     val qIdx: Int = uri.indexOf('?')
     val tmp: String = if (qIdx != -1) uri.substring(0, qIdx) else uri
