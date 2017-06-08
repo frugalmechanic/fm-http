@@ -2,7 +2,7 @@ FMPublic
 
 name := "fm-http"
 
-version := "0.8.0-SNAPSHOT"
+version := "0.8.0"
 
 description := "Async Http Client & Server for Scala"
 
@@ -24,8 +24,8 @@ scalacOptions := Seq(
 
 libraryDependencies ++= Seq(
   "com.frugalmechanic" %% "scala-optparse" % "1.1.2",
-  "com.frugalmechanic" %% "fm-common" % "0.8.0-SNAPSHOT",
-  "com.frugalmechanic" %% "fm-lazyseq" % "0.6.0-SNAPSHOT" % "test"
+  "com.frugalmechanic" %% "fm-common" % "0.8.0",
+  "com.frugalmechanic" %% "fm-lazyseq" % "0.6.0" % "test"
 )
 
 libraryDependencies ++= Seq(
