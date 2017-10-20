@@ -28,11 +28,11 @@ libraryDependencies ++= Seq(
 )
 
 libraryDependencies ++= Seq(
-  "io.netty" % "netty-all" % "4.0.47.Final",
+  "io.netty" % "netty-all" % "4.0.52.Final",
   "com.jcraft" % "jzlib" % "1.1.3", // For Netty 4.X
-  "com.github.jnr" % "jnr-posix" % "3.0.1", // POSIX Support (getpid and setssid) for the HttpServerApp
+  "com.github.jnr" % "jnr-posix" % "3.0.42", // POSIX Support (getpid and setssid) for the HttpServerApp
   "org.slf4j" % "slf4j-api" % "1.7.25",
   "ch.qos.logback" % "logback-classic" % "1.2.3",
   "javax.mail" % "mail" % "1.4.1",
-  "org.scalatest" %% "scalatest" % "3.0.1" % "test"
+  "org.scalatest" %% "scalatest" % "3.0.4" % "test"
 )
