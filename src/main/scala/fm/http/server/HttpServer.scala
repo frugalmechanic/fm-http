@@ -127,6 +127,7 @@ final case class HttpServer (port: Int = 8080, router: RequestRouter, authKey: S
     logger.info(s"Shutting Down $name")
     
     deregisterShutdownHook()
+    disablePing()
     
     logger.trace(s"$name - Closing Server Channel")
     
