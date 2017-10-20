@@ -26,6 +26,7 @@ import jnr.posix.util.DefaultPOSIXHandler
 import org.slf4j.LoggerFactory
 import scala.util.control.Breaks._
 import scala.collection.JavaConverters._
+import sun.misc.{Signal, SignalHandler}
 
 abstract class HttpServerApp extends Logging {
   /** The RequestRouter that will handle requests */
@@ -128,6 +129,8 @@ abstract class HttpServerApp extends Logging {
     assert(alive(port), "Server not alive?!")
     
     server.enablePing()
+
+    registerPingSignalHandlers(server)
     
     if (usedPorts.nonEmpty) {
       logger.info("Allowing Load Balancer to pickup new server...")
@@ -312,4 +315,23 @@ abstract class HttpServerApp extends Logging {
     }
     
   }
+
+  /**
+   * We use sun.misc.Signal to hook into the USR2 signal to disable the /_ping handler.
+   *
+   * This can be used when shutting down docker containers to gracefully remove an instance from the
+   * load balancer via the 'docker kill --signal USR2' command.
+   *
+   * Note: USR1 is already being used by the JVM for something:
+   *  "java.lang.IllegalArgumentException: Signal already used by VM or OS: SIGUSR1"
+   */
+  private def registerPingSignalHandlers(server: HttpServer): Unit = {
+    Signal.handle(new Signal("USR2"), new SignalHandler{
+      def handle(signal: Signal): Unit = {
+        logger.info("Caught USR2 Signal - Disabling /_ping")
+        server.disablePing()
+      }
+    })
+  }
+
 }
