@@ -70,7 +70,7 @@ object TestClientAndServer {
   private val UTF8Header: Headers   = Headers(("Content-Type", "text/html; charset=utf-8"))
   private val Latin1Header: Headers = Headers(("Content-Type", "text/html; charset=ISO-8859-1"))
 
-  protected val unwrappedHandler: PartialFunction[Request, Response] = {
+  protected val unwrappedHandler: PartialFunction[Request, Response] = (request: Request) => request match {
     case GET(simple"/${INT(code)}")       => Response(Status(code), Status(code).msg)
     case GET(simple"/close/${INT(code)}") => Response(Status(code), Headers("Connection" -> "close"), Status(code).msg)
     case GET("/data_one_mb")              => Response.Ok(makeLinkedHttpContent(OneMB))
@@ -91,8 +91,15 @@ object TestClientAndServer {
     case GET("/redirect5")                => Response.Found("/redirect4")
     case GET("/redirect6")                => Response.Found("/redirect5")
 
+    case GET("/basic_auth")               => handleBasicAuth(request)
+
     case GET("/file")                     => Response.Ok(UTF8Header, tmpFile)
     case GET("/random_access_file")       => Response.Ok(UTF8Header, makeRandomAccessFile("This is a random access file"))
+  }
+
+  private def handleBasicAuth(request: Request): Response = {
+    if (request.headers.basicAuthUserAndPass === Some(("foo", "bar"))) Response.Ok(Headers.empty, Unpooled.copiedBuffer("ok", CharsetUtil.ISO_8859_1))
+    else Response(Status.UNAUTHORIZED, Headers("WWW-Authenticate" -> """Basic realm="Test""""), Unpooled.copiedBuffer("You need a valid user and password to access this content.", CharsetUtil.ISO_8859_1))
   }
   
   // This just cycles through all the ASCII printable chars starting at the space ' ' (20) and ending with '~' (126)
@@ -355,6 +362,12 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   
   test("Redirect 6 - noFollowRedirects") {
     getSync("/redirect6", 302, "/redirect5", clientNoFollowRedirects)
+  }
+
+  test("Authentication - Basic Auth") {
+    getSync("/basic_auth", 401, "You need a valid user and password to access this content.")
+    getSync("/basic_auth", 401, "You need a valid user and password to access this content.", client.withBasicAuth("bar", "foo"))
+    getSync("/basic_auth", 200, "ok", client.withBasicAuth("foo", "bar"))
   }
 
   test("File - Single") {
