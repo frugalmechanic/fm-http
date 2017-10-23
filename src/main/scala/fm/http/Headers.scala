@@ -130,7 +130,7 @@ object Headers {
     case ex: Exception => None
   }
   
-  def makeBasicAuthorization(user: String, pass: String): String = Base64.encodeBytes((user+":"+pass).getBytes(StandardCharsets.ISO_8859_1))
+  def makeBasicAuthorization(user: String, pass: String): String = "Basic "+Base64.encodeBytes((user+":"+pass).getBytes(StandardCharsets.ISO_8859_1))
   
   /**
    * Given the value of the WWW-Authenticate or Authorization headers parse the Digest auth params
