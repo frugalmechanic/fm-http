@@ -739,15 +739,6 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   def xUACompatible_=(v: Option[String]): Unit = set(NonStandardNames.X_UA_COMPATIBLE, v)
 
   //
-  // Authorization
-  //
-
-  def basicAuthorization_=(userPass: (String,String)): Unit = {
-    val (user, pass) = userPass
-    Headers.makeBasicAuthorization(user, pass)
-  }
-
-  //
   // Private Helpers
   //
 
