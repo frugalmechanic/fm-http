@@ -326,6 +326,9 @@ abstract class HttpServerApp extends Logging {
    *  "java.lang.IllegalArgumentException: Signal already used by VM or OS: SIGUSR1"
    */
   private def registerPingSignalHandlers(server: HttpServer): Unit = {
+    // SIGUSR2 isn't available on windows
+    if (System.getProperty("os.name", "") startsWith "Windows") return
+
     Signal.handle(new Signal("USR2"), new SignalHandler{
       def handle(signal: Signal): Unit = {
         logger.info("Caught USR2 Signal - Disabling /_ping")
@@ -333,5 +336,4 @@ abstract class HttpServerApp extends Logging {
       }
     })
   }
-
 }
