@@ -112,7 +112,7 @@ final class Request (
   private def requireEmptyContent(): Unit = {
     // If the user has already triggered a read method then
     // ignore this check since it will trigger an exception.
-    if (content.isFullyRead) return
+    if (content.hasStartedReading) return
     
     content.foldLeft(false){ (isSet, buf) =>
       if (isSet) logger.error("Expected EmptyContent for request: "+this)

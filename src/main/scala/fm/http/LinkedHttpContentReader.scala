@@ -15,7 +15,6 @@
  */
 package fm.http
 
-import fm.common.Implicits._
 import fm.common.{IOUtils, Logging}
 import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.channel.ChannelHandlerContext
@@ -42,17 +41,27 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   import LinkedHttpContentReader.CONTINUE
 
   private[this] val foldLeftCalled: AtomicBoolean = new AtomicBoolean(false)
+  private[this] val hasBeenFullyRead: AtomicBoolean = new AtomicBoolean(false)
   @volatile private[this] var current: Future[Option[LinkedHttpContent]] = head
 
   /**
    * Have we started reading this request content?
    */
   def hasStartedReading: Boolean = foldLeftCalled.get()
-  
+
   /**
    * Has the content been fully read successfully
    */
-  def isFullyRead: Boolean = future.isSuccess
+  def isFullyRead: Boolean = hasBeenFullyRead.get()
+
+  // This method was originally implemented in terms of the future being successfully completed but
+  // the completion of the future could be slightly delayed and therefore not accurate when we call
+  // this method from the NettyHttpServerPipelineHandler.prepareResponse method to determine if we
+  // need to warn about the request body not being fully read.  So now we use an AtomicBoolean set
+  // by the foldLeft0 method.
+  //
+  // Note: this requires "import fm.common.Implicits._"
+  //def isFullyRead: Boolean = future.isSuccess
   
   private[this] val completedPromise: Promise[Unit] = Promise()
   
@@ -151,7 +160,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
       t match {
         case Failure(ex) => p.failure(ex)
         case Success(opt) => opt match {
-          case None => p.success(z)
+          case None => hasBeenFullyRead.set(true); p.success(z)
           case Some(linkedContent) =>
             // Wrap the op in a try in case it throws an exception
             val t = Try{ op(z, linkedContent.content()) }

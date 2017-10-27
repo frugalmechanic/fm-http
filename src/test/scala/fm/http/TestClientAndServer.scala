@@ -15,17 +15,17 @@
  */
 package fm.http
 
-import scala.concurrent.{Await, Future, Promise}
-import scala.concurrent.duration._
-import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
-import io.netty.buffer.{ByteBuf, Unpooled}
-import io.netty.util.CharsetUtil
 import fm.common.{Logging, TestHelpers}
 import fm.common.Implicits._
 import fm.lazyseq.LazySeq
+import io.netty.buffer.{ByteBuf, Unpooled}
+import io.netty.util.CharsetUtil
 import java.io.{File, RandomAccessFile}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
+import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
+import scala.concurrent.{Await, Future, Promise}
+import scala.concurrent.duration._
 
 object TestClientAndServer {
   val port: Int = 1234
@@ -52,7 +52,7 @@ object TestClientAndServer {
   
   import fm.http.client.HttpClient
   import fm.http.server._
-  
+
   val client: HttpClient = HttpClient(maxConnectionsPerHost = 1000, maxRequestQueuePerHost = requestCount, defaultResponseTimeout = 60.seconds)
   val clientNoFollowRedirects: HttpClient = HttpClient(maxConnectionsPerHost = 1000, maxRequestQueuePerHost = requestCount, defaultResponseTimeout = 60.seconds, followRedirects = false)
   
@@ -70,7 +70,10 @@ object TestClientAndServer {
   private val UTF8Header: Headers   = Headers(("Content-Type", "text/html; charset=utf-8"))
   private val Latin1Header: Headers = Headers(("Content-Type", "text/html; charset=ISO-8859-1"))
 
-  protected val unwrappedHandler: PartialFunction[Request, Response] = (request: Request) => request match {
+  private implicit def responseToFugure(r: Response): Future[Response] = Future.successful(r)
+  import scala.concurrent.ExecutionContext.Implicits.global
+
+  protected val unwrappedHandler: PartialFunction[Request, Future[Response]] = (request: Request) => request match {
     case GET(simple"/${INT(code)}")       => Response(Status(code), Status(code).msg)
     case GET(simple"/close/${INT(code)}") => Response(Status(code), Headers("Connection" -> "close"), Status(code).msg)
     case GET("/data_one_mb")              => Response.Ok(makeLinkedHttpContent(OneMB))
@@ -95,6 +98,9 @@ object TestClientAndServer {
 
     case GET("/file")                     => Response.Ok(UTF8Header, tmpFile)
     case GET("/random_access_file")       => Response.Ok(UTF8Header, makeRandomAccessFile("This is a random access file"))
+
+    case POST("/upload")                  => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ sum: Int => Response.Ok(sum.toString) }
+    case POST("/close/upload")            => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ sum: Int => Response(Status(200), Headers("Connection" -> "close"), sum.toString) }
   }
 
   private def handleBasicAuth(request: Request): Response = {
@@ -138,14 +144,13 @@ object TestClientAndServer {
     def isDefinedAt(request: Request): Boolean = unwrappedHandler.isDefinedAt(request)
   }
   
-  def wrap(request: Request, f: => Response): Future[Response] = {
+  def wrap(request: Request, f: => Future[Response]): Future[Response] = {
     request.params.getFirstNonBlank("delay").flatMap{ _.toIntOption } match {
       case Some(delay) =>
         val p = Promise[Response]()
-        server.timer.schedule(delay.seconds){ p.success(f) }
+        server.timer.schedule(delay.seconds){ p.completeWith(f) }
         p.future
-      case None =>
-        Future.successful(f) 
+      case None => f
     }
   }
 }
@@ -173,12 +178,21 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   
   private def getSync(path: String, expectedCode: Int, expectedBody: String, httpClient: HttpClient = client): Unit = TestHelpers.withCallerInfo{
     val f: Future[FullStringResponse] = getFullStringAsync(path, httpClient)
-    val res: FullStringResponse = Await.result(f, 5.seconds)
+    val res: FullStringResponse = Await.result(f, 10.seconds)
+    res.status.code should equal (expectedCode)
+    res.body should equal (expectedBody)
+  }
+
+  private def postSync(path: String, postBody: String, expectedCode: Int, expectedBody: String, httpClient: HttpClient = client): Unit = TestHelpers.withCallerInfo{
+    val f: Future[FullStringResponse] = postFullStringAsync(path, postBody, httpClient)
+    val res: FullStringResponse = Await.result(f, 10.seconds)
     res.status.code should equal (expectedCode)
     res.body should equal (expectedBody)
   }
   
   private def getFullStringAsync(path: String, httpClient: HttpClient = client): Future[FullStringResponse] = httpClient.getFullString(makeUrl(path))
+
+  private def postFullStringAsync(path: String, postBody: String, httpClient: HttpClient = client): Future[FullStringResponse] = httpClient.postFullString(makeUrl(path), postBody)
   
   private def getAndVerifyData(path: String): Future[Boolean] = {
     client.getAsync(makeUrl(path)).flatMap{ response: AsyncResponse =>
@@ -209,10 +223,18 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     (1 to 1000).foreach { _ => getSync("/200", 200, "OK") }
   }
   
-  test(s"Parallel Sync Requests ($requestCount Requests)") {
+  test(s"Parallel Sync GET Requests ($requestCount Requests)") {
     // Uses blocking calls to maintain a constant number of connections to the server
     LazySeq.wrap(1 to requestCount).parForeach(threads=64){ _ =>
       getSync("/200", 200, "OK")
+    }
+  }
+
+  test(s"Parallel Sync POST Requests ($requestCount Requests)") {
+    // Uses blocking calls to maintain a constant number of connections to the server
+    LazySeq.wrap(1 to requestCount).parForeach(threads=64){ _ =>
+      val body: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890"
+      postSync("/upload", body, 200, body.length.toString)
     }
   }
   
@@ -225,6 +247,17 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
       res.body should equal ("OK")
     }
   }
+
+  test(s"Async POST Requests ($requestCount Requests)") {
+    // Uses async non-blocking calls to make as many connections as possible to the server
+    val body: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890"
+    val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => postFullStringAsync("/upload", body) }
+    val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
+    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+      res.status.code should equal (200)
+      res.body should equal (body.length.toString)
+    }
+  }
   
   test(s"Async Requests ($requestCount Requests) - Connection: close") {
     // Uses async non-blocking calls to make as many connections as possible to the server
@@ -233,6 +266,17 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
       res.status.code should equal (200)
       res.body should equal ("OK")
+    }
+  }
+
+  test(s"Async Requests POST ($requestCount Requests) - Connection: close") {
+    // Uses async non-blocking calls to make as many connections as possible to the server
+    val body: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890"
+    val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => postFullStringAsync("/close/upload", body) }
+    val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
+    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+      res.status.code should equal (200)
+      res.body should equal (body.length.toString)
     }
   }
   
@@ -270,7 +314,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
       Await.result(getAndVerifyData("/data_one_mb"), 10.seconds)
     }
   }
-  
+
 //  // This test uses up too much native memory:
 //  test("Async Requests with Large Response Body (1,000 Requests, 1 MB)") {
 //    // Uses async non-blocking calls to make as many connections as possible to the server
@@ -391,4 +435,5 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
       getSync("/random_access_file", 200, "This is a random access file")
     }
   }
+
 }
