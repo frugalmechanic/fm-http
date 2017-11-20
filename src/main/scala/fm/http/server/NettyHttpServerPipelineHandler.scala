@@ -41,11 +41,6 @@ object NettyHttpServerPipelineHandler {
   private val ID = new java.util.concurrent.atomic.AtomicLong
   
   /**
-   * The maximum number of requests that we will process per connection
-   */
-  private val MaxRequestsPerConnection: Long = 128
-  
-  /**
    * For marking if a channel is currently processing a request
    */
   private val ProcessingRequestKey = AttributeKey.valueOf[Boolean]("NettyHttpServerPipelineHandler.ProcessingRequest")
@@ -132,7 +127,7 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     
     val (request: Request, response: Future[Response]) = handle(nettyRequest, content)
     
-    val wantKeepAlive: Boolean = HttpHeaders.isKeepAlive(nettyRequest) && numRequestsHandled < MaxRequestsPerConnection
+    val wantKeepAlive: Boolean = HttpHeaders.isKeepAlive(nettyRequest) && numRequestsHandled < options.maxRequestsPerConnection
     
     // The Response Version should match the request version
     val version: HttpVersion = nettyRequest.getProtocolVersion()
