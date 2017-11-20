@@ -39,7 +39,7 @@ object HttpClient {
   
   def apply(
     socksProxy: Option[(String, Int)] = None,
-    defaultMaxLength: Long = 10485760, /* 10MB (which may or may not be 10MB worth of Chars) */
+    defaultMaxLength: Long = 104857600, /* 100MB (which may or may not be 100MB worth of Chars) */
     defaultHeaders: Headers = DefaultHeaders,
     useConnectionPool: Boolean = true,   // Should we re-use connections? (Use HTTP Keep Alive?)
     maxConnectionsPerHost: Int = 8,      // Only applies if useConnectionPool is true
