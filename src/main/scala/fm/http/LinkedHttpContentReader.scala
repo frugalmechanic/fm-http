@@ -181,7 +181,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   // TODO: Does this really need to return a Future[Unit]?
   def close(): Unit = try {
     // This can throw an exception if foldLeft is also called
-    // in a concurrent thread at the same time but thats okay.
+    // in a concurrent thread at the same time but that's okay.
     // What's NOT okay is trying to set foldLeftCalled from here
     // since it's set in foldLeft()
     if (!foldLeftCalled.get) discardContent() // TODO: is this safe since the foldLeft in discardContent is asynchronous?
