@@ -27,7 +27,7 @@ import io.netty.channel.socket.SocketChannel
 import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.codec.http.{HttpClientCodec, HttpMethod}
 import io.netty.handler.codec.socks._
-import io.netty.handler.ssl.{SslContext, SslContextBuilder, SslHandler}
+import io.netty.handler.ssl.{SslContext, SslContextBuilder}
 import io.netty.util.concurrent.GlobalEventExecutor
 
 import java.util.concurrent.{ConcurrentHashMap, TimeoutException}
@@ -403,7 +403,7 @@ final case class DefaultHttpClient(
          val p: ChannelPipeline = ch.pipeline()
 
          if (ssl) {
-           p.addLast("ssl", new SslHandler(sslCtx.newEngine(ch.alloc(), host, port)))
+           p.addLast("ssl", sslCtx.newHandler(ch.alloc(), host, port))
          }
          
          p.addLast("httpcodec",     new HttpClientCodec())
