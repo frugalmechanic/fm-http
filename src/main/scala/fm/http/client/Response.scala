@@ -15,7 +15,7 @@
  */
 package fm.http.client
 
-import io.netty.handler.codec.http.{HttpHeaders, HttpResponse, HttpVersion}
+import io.netty.handler.codec.http.{HttpResponse, HttpUtil, HttpVersion}
 import java.io.Closeable
 import java.nio.charset.{Charset, IllegalCharsetNameException}
 import scala.concurrent.{ExecutionContext, Future, Promise}
@@ -30,9 +30,9 @@ object Response {
 }
 
 sealed abstract class Response(response: HttpResponse) extends Closeable {
-  val status: Status = Status(response.getStatus())
+  val status: Status = Status(response.status())
   
-  val version: HttpVersion = response.getProtocolVersion()
+  val version: HttpVersion = response.protocolVersion()
   
   val headers: ImmutableHeaders = ImmutableHeaders(response.headers)
   
@@ -44,7 +44,7 @@ sealed abstract class Response(response: HttpResponse) extends Closeable {
   /**
    * The Content-Length of the request body (if known)
    */
-  def contentLength: Option[Long] = Option(HttpHeaders.getContentLength(response, -1)).filter{ _ >= 0 }
+  def contentLength: Option[Long] = Option(HttpUtil.getContentLength(response, -1)).filter{ _ >= 0 }.map{ _.toLong }
   
   override def toString: String = {
     s"${version.text} ${status.code} ${status.msg}\n\n$headers"
@@ -93,8 +93,8 @@ final class FullResponse(response: HttpResponse, val body: Array[Byte]) extends 
 
 object AsyncResponse {
   private def expectBodyContent(response: HttpResponse): Boolean = {
-    val hasContentLength: Boolean = HttpHeaders.getContentLength(response, -1) > 0
-    val isChunked: Boolean = HttpHeaders.isTransferEncodingChunked(response)
+    val hasContentLength: Boolean = HttpUtil.getContentLength(response, -1) > 0
+    val isChunked: Boolean = HttpUtil.isTransferEncodingChunked(response)
     hasContentLength || isChunked
   }
 }

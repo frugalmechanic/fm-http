@@ -18,7 +18,7 @@ package fm.http.server
 import fm.common.Logging
 import fm.common.Implicits._
 import fm.http.{Headers, Status}
-import io.netty.handler.codec.http.HttpHeaders
+import io.netty.handler.codec.http.HttpHeaderNames
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -43,7 +43,7 @@ trait BasicAuth extends Auth with Logging {
   final protected def requireAuthImpl(request: Request)(action: => Future[Response]): Future[Response] = {
     isAuthorized(request).flatMap{ valid: Boolean =>
       if (valid) action
-      else Future.successful(Response(Status.UNAUTHORIZED, Headers(HttpHeaders.Names.WWW_AUTHENTICATE -> s"""Basic realm="$realm"""")))
+      else Future.successful(Response(Status.UNAUTHORIZED, Headers(HttpHeaderNames.WWW_AUTHENTICATE -> s"""Basic realm="$realm"""")))
     }
   }
 

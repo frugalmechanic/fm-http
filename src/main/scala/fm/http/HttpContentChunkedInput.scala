@@ -15,7 +15,7 @@
  */
 package fm.http.server
 
-import io.netty.buffer.ByteBuf
+import io.netty.buffer.{ByteBuf, ByteBufAllocator}
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http.{DefaultHttpContent, HttpContent, LastHttpContent}
 import io.netty.handler.stream.ChunkedInput
@@ -27,7 +27,26 @@ final case class HttpContentChunkedInput(input: ChunkedInput[ByteBuf]) extends C
   def close(): Unit = input.close()
   
   def isEndOfInput(): Boolean = input.isEndOfInput()
-  
+
+  def length(): Long = input.length()
+
+  def progress(): Long = input.progress()
+
+  /**
+   * Fetches a chunked data from the stream. Once this method returns the last chunk and
+   * thus the stream has reached at its end, any subsequent isEndOfInput() call must
+   * return false.
+   *
+   * @returns the fetched chunk. null if there is no data left in the stream. Please
+   *          note that null does not necessarily mean that the stream has reached at
+   *          its end. In a slow stream, the next chunk might be unavailable just momentarily.
+   */
+  def readChunk(allocator: ByteBufAllocator): HttpContent = {
+    if (isEndOfInput) return LastHttpContent.EMPTY_LAST_CONTENT
+    val buf: ByteBuf = input.readChunk(allocator)
+    if (null == buf) null else new DefaultHttpContent(buf)
+  }
+
   /**
    * Fetches a chunked data from the stream. Once this method returns the last chunk and 
    * thus the stream has reached at its end, any subsequent isEndOfInput() call must 
@@ -37,9 +56,5 @@ final case class HttpContentChunkedInput(input: ChunkedInput[ByteBuf]) extends C
    *          note that null does not necessarily mean that the stream has reached at 
    *          its end. In a slow stream, the next chunk might be unavailable just momentarily.
    */
-  def readChunk(ctx: ChannelHandlerContext): HttpContent = {
-    if (isEndOfInput) return LastHttpContent.EMPTY_LAST_CONTENT
-    val buf: ByteBuf = input.readChunk(ctx)
-    if (null == buf) null else new DefaultHttpContent(buf)
-  }
+  def readChunk(ctx: ChannelHandlerContext): HttpContent = readChunk(ctx.alloc())
 }

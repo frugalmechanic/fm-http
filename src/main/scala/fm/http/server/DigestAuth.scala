@@ -16,10 +16,10 @@
 package fm.http.server
 
 import com.frugalmechanic.optparse.OptParse
-import fm.common.{DigestUtils, Logging, Crypto, StacklessException}
+import fm.common.{Crypto, DigestUtils, Logging, StacklessException}
 import fm.common.Implicits._
 import fm.http.{Headers, Status}
-import io.netty.handler.codec.http.HttpHeaders
+import io.netty.handler.codec.http.HttpHeaderNames
 import java.security.SecureRandom
 import scala.util.matching.Regex
 import scala.concurrent.Future
@@ -143,7 +143,7 @@ final case class DigestAuth(
     )++stale
 
     val wwwAuthenticateValue: String = "Digest "+params.map{case (k,v) => k+"=\""+v+"\""}.mkString(", ")
-    Future.successful(Response(Status.UNAUTHORIZED, Headers(HttpHeaders.Names.WWW_AUTHENTICATE -> wwwAuthenticateValue)))
+    Future.successful(Response(Status.UNAUTHORIZED, Headers(HttpHeaderNames.WWW_AUTHENTICATE -> wwwAuthenticateValue)))
   }
   
   def isValid(request: Request): Boolean = {

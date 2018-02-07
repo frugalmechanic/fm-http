@@ -15,7 +15,7 @@
  */
 package fm.http.server
 
-import io.netty.handler.codec.http.{HttpContentCompressor, HttpHeaders, HttpResponse}
+import io.netty.handler.codec.http.{HttpContentCompressor, HttpHeaderNames, HttpResponse}
 import io.netty.handler.codec.http.HttpContentEncoder.Result
 
 object NettyContentCompressor {
@@ -39,7 +39,7 @@ object NettyContentCompressor {
   )
   
   def isCompressable(response: HttpResponse): Boolean = {
-    val contentType: String = response.headers().get(HttpHeaders.Names.CONTENT_TYPE)
+    val contentType: String = response.headers().get(HttpHeaderNames.CONTENT_TYPE)
     isCompressable(contentType)
   }
   

@@ -21,8 +21,7 @@ import fm.http._
 import io.netty.buffer.ByteBuf
 import java.io.Closeable
 import java.util.IdentityHashMap
-import io.netty.handler.codec.http.{HttpHeaders, HttpMethod, HttpVersion}
-import io.netty.handler.codec.http.{DefaultHttpContent, DefaultHttpRequest, HttpRequest, LastHttpContent}
+import io.netty.handler.codec.http._
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future, Promise}
@@ -45,10 +44,10 @@ object Request {
   private def expectBodyContent(request: HttpRequest): Boolean = {
     import HttpMethod.{POST, PUT, PATCH}
     
-    val method: HttpMethod = request.getMethod()
+    val method: HttpMethod = request.method()
     val validMethod: Boolean = method === POST || method === PUT || method === PATCH
-    val hasContentLength: Boolean = HttpHeaders.getContentLength(request, -1) > 0
-    val isChunked: Boolean = HttpHeaders.isTransferEncodingChunked(request)
+    val hasContentLength: Boolean = HttpUtil.getContentLength(request, -1) > 0
+    val isChunked: Boolean = HttpUtil.isTransferEncodingChunked(request)
     
     validMethod && (hasContentLength || isChunked)
   }
@@ -76,18 +75,18 @@ final class Request (
    */
   def completed: Future[Unit] = completedPromise.future
   
-  val version: HttpVersion = request.getProtocolVersion()
+  val version: HttpVersion = request.protocolVersion()
   
-  val method: HttpMethod = request.getMethod()
+  val method: HttpMethod = request.method()
   
-  val uri: String = request.getUri()
+  val uri: String = request.uri()
   
   val headers: ImmutableHeaders = ImmutableHeaders(request.headers)
   
   /**
    * The Content-Length of the request body (if known)
    */
-  def contentLength: Option[Long] = Option(HttpHeaders.getContentLength(request, -1)).filter{ _ >= 0 }
+  def contentLength: Option[Long] = Option(HttpUtil.getContentLength(request, -1)).filter{ _ >= 0 }.map{ _.toLong }
   
   /**
    * The path that was requested (no query params, e.g. /path)

@@ -19,8 +19,9 @@ import fm.common.Implicits._
 import fm.common.{Base64, ImmutableDate, IndexedSeqProxy}
 import java.nio.charset.StandardCharsets
 import java.util.Date
-import io.netty.handler.codec.http.{DefaultHttpHeaders, HttpHeaders}
+import io.netty.handler.codec.http.{DefaultHttpHeaders, EmptyHttpHeaders, HttpHeaderNames, HttpHeaders}
 import io.netty.handler.codec.http.cookie.{ClientCookieEncoder, ServerCookieEncoder}
+import io.netty.util.AsciiString
 import java.time._
 import java.time.format.DateTimeFormatter
 import scala.collection.JavaConverters._
@@ -28,9 +29,9 @@ import scala.util.Try
 import scala.util.matching.Regex
 
 object Headers {  
-  val empty: Headers = ImmutableHeaders(HttpHeaders.EMPTY_HEADERS)
+  val empty: Headers = ImmutableHeaders(EmptyHttpHeaders.INSTANCE)
   
-  def apply(headerValues: (String, Any)*): ImmutableHeaders = {
+  def apply(headerValues: (CharSequence, Any)*): ImmutableHeaders = {
     val headers: MutableHeaders = MutableHeaders()
     headers.withHeaders(headerValues:_*)
     
@@ -38,7 +39,7 @@ object Headers {
     ImmutableHeaders(headers.nettyHeaders)
   }
   
-  def noCache(headerValues: (String, Any)*): ImmutableHeaders = {
+  def noCache(headerValues: (CharSequence, Any)*): ImmutableHeaders = {
     val headers: MutableHeaders = MutableHeaders()
     headers.withNoCache
     headers.withHeaders(headerValues:_*)
@@ -81,31 +82,26 @@ object Headers {
     case _ => None
   }
 
-  private[http] object AdditionalNames {
-    //
-    // Standard but not part of Netty's Names
-    //
-    val CONTENT_DISPOSITION = "Content-Disposition"
-  }
-
   private[http] object NonStandardNames {
+    private implicit def toAsciiString(s: String): AsciiString = new AsciiString(s)
+
     //
     // Non-Standard Request Headers
     //
-    val DNT: String = "DNT"
-    val X_REQUESTED_WITH: String = "X-Requested-With"
-    val X_FORWARDED_FOR: String = "X-Forwarded-For"
-    val X_FORWARDED_PROTO: String = "X-Forwarded-Proto"
-    val X_SSL: String = "X-SSL"
+    val DNT: AsciiString = "DNT"
+    val X_REQUESTED_WITH: AsciiString = "X-Requested-With"
+    val X_FORWARDED_FOR: AsciiString = "X-Forwarded-For"
+    val X_FORWARDED_PROTO: AsciiString = "X-Forwarded-Proto"
+    val X_SSL: AsciiString = "X-SSL"
    
     //
     // Non-Standard Response Headers
     //
-    val X_FRAME_OPTIONS: String = "X-Frame-Options"
-    val X_XSS_PROTECTION: String = "X-XSS-Protection"
-    val X_CONTENT_TYPE_OPTIONS: String = "X-Content-Type-Options"
-    val X_POWERED_BY: String = "X-Powered-By"
-    val X_UA_COMPATIBLE: String = "X-UA-Compatible"
+    val X_FRAME_OPTIONS: AsciiString = "X-Frame-Options"
+    val X_XSS_PROTECTION: AsciiString = "X-XSS-Protection"
+    val X_CONTENT_TYPE_OPTIONS: AsciiString = "X-Content-Type-Options"
+    val X_POWERED_BY: AsciiString = "X-Powered-By"
+    val X_UA_COMPATIBLE: AsciiString = "X-UA-Compatible"
   }
   
   private val BasicAuthHeader: Regex = """Basic (.+)""".r
@@ -160,7 +156,6 @@ object Headers {
 
 sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   import Headers._
-  import HttpHeaders.Names
   
   private[http] def nettyHeaders: HttpHeaders
   def self: Vector[(String, String)] = nettyHeaders.asScala.toVector.map{ entry => entry.getKey() -> entry.getValue() }
@@ -182,7 +177,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   }
   
   /** Adds the passed in headers */
-  def withHeaders(headerValues: (String, Any)*): Headers
+  def withHeaders(headerValues: (CharSequence, Any)*): Headers
   
   /** Add the Cache-Control and Expires headers to prevent caching of this response */
   def withNoCache: Headers
@@ -205,15 +200,15 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   
   override def toString: String = self.map{ case (k,v) => s"$k: $v" }.mkString("\n")
   
-  def apply(name: String): String = get(name).getOrElse{ throw new NoSuchElementException("No header value for: "+name) }
-  def get(name: String): Option[String] = Option(nettyHeaders.get(name))
+  def apply(name: CharSequence): String = get(name).getOrElse{ throw new NoSuchElementException("No header value for: "+name) }
+  def get(name: CharSequence): Option[String] = Option(nettyHeaders.get(name))
   
-  def getAll(name: String): Vector[String] = nettyHeaders.getAll(name).asScala.toVector
+  def getAll(name: CharSequence): Vector[String] = nettyHeaders.getAll(name).asScala.toVector
   
-  def getBool(name: String): Option[Boolean] = get(name).flatMap{ _.parseBoolean }
-  def getDate(name: String): Option[ImmutableDate] = get(name).flatMap{ parseImmutableDate }
-  def getInt(name: String): Option[Int] = get(name).flatMap{ _.toIntOption }
-  def getLong(name: String): Option[Long] = get(name).flatMap{ _.toLongOption }
+  def getBool(name: CharSequence): Option[Boolean] = get(name).flatMap{ _.parseBoolean }
+  def getDate(name: CharSequence): Option[ImmutableDate] = get(name).flatMap{ parseImmutableDate }
+  def getInt(name: CharSequence): Option[Int] = get(name).flatMap{ _.toIntOption }
+  def getLong(name: CharSequence): Option[Long] = get(name).flatMap{ _.toLongOption }
   
   /** A helper to find a client-sent cookie by name */
   def getCookie(name: String): Option[Cookie] = cookies.find{ _.name === name }
@@ -235,93 +230,93 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
     if(-1 === idx) None else h.substring(idx + 1).toIntOption
   }
   
-  def accept: Option[String] = get(Names.ACCEPT)
-  def acceptCharset: Option[String] = get(Names.ACCEPT_CHARSET)
-  def acceptEncoding: Option[String] = get(Names.ACCEPT_ENCODING)
-  def acceptLanguage: Option[String] = get(Names.ACCEPT_LANGUAGE)
-  def acceptPatch: Option[String] = get(Names.ACCEPT_PATCH)
-  def acceptRanges: Option[String] = get(Names.ACCEPT_RANGES)
-  def accessControlAllowCredentials: Option[String] = get(Names.ACCESS_CONTROL_ALLOW_CREDENTIALS)
-  def accessControlAllowHeaders: Option[String] = get(Names.ACCESS_CONTROL_ALLOW_HEADERS)
-  def accessControlAllowMethods: Option[String] = get(Names.ACCESS_CONTROL_ALLOW_METHODS)
-  def accessControlAllowOrigin: Option[String] = get(Names.ACCESS_CONTROL_ALLOW_ORIGIN)
-  def accessControlExposeHeaders: Option[String] = get(Names.ACCESS_CONTROL_EXPOSE_HEADERS)
-  def accessControlMaxAge: Option[String] = get(Names.ACCESS_CONTROL_MAX_AGE)
-  def accessControlRequestHEaders: Option[String] = get(Names.ACCESS_CONTROL_REQUEST_HEADERS)
-  def accessControlRequestMethod: Option[String] = get(Names.ACCESS_CONTROL_REQUEST_METHOD)
-  def age: Option[Long] = getLong(Names.AGE)
-  def allow: Option[String] = get(Names.ALLOW)
-  def authorization: Option[String] = get(Names.AUTHORIZATION)
-  def cacheControl: Option[String] = get(Names.CACHE_CONTROL)
-  def connection: Option[String] = get(Names.CONNECTION)
-  def contentBase: Option[String] = get(Names.CONTENT_BASE)
-  def contentDisposition: Option[String] = get(AdditionalNames.CONTENT_DISPOSITION)
+  def accept: Option[String] = get(HttpHeaderNames.ACCEPT)
+  def acceptCharset: Option[String] = get(HttpHeaderNames.ACCEPT_CHARSET)
+  def acceptEncoding: Option[String] = get(HttpHeaderNames.ACCEPT_ENCODING)
+  def acceptLanguage: Option[String] = get(HttpHeaderNames.ACCEPT_LANGUAGE)
+  def acceptPatch: Option[String] = get(HttpHeaderNames.ACCEPT_PATCH)
+  def acceptRanges: Option[String] = get(HttpHeaderNames.ACCEPT_RANGES)
+  def accessControlAllowCredentials: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_ALLOW_CREDENTIALS)
+  def accessControlAllowHeaders: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_ALLOW_HEADERS)
+  def accessControlAllowMethods: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_ALLOW_METHODS)
+  def accessControlAllowOrigin: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN)
+  def accessControlExposeHeaders: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS)
+  def accessControlMaxAge: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_MAX_AGE)
+  def accessControlRequestHEaders: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_REQUEST_HEADERS)
+  def accessControlRequestMethod: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_REQUEST_METHOD)
+  def age: Option[Long] = getLong(HttpHeaderNames.AGE)
+  def allow: Option[String] = get(HttpHeaderNames.ALLOW)
+  def authorization: Option[String] = get(HttpHeaderNames.AUTHORIZATION)
+  def cacheControl: Option[String] = get(HttpHeaderNames.CACHE_CONTROL)
+  def connection: Option[String] = get(HttpHeaderNames.CONNECTION)
+  def contentBase: Option[String] = get(HttpHeaderNames.CONTENT_BASE)
+  def contentDisposition: Option[String] = get(HttpHeaderNames.CONTENT_DISPOSITION)
   def contentDispositionAttachmentFileName: Option[String] = contentDisposition.flatMap{ parseContentDispositionAttachmentFileName }
-  def contentEncoding: Option[String] = get(Names.CONTENT_ENCODING)
-  def contentLanguage: Option[String] = get(Names.CONTENT_LANGUAGE)
-  def contentLength: Option[Long] = getLong(Names.CONTENT_LENGTH)
-  def contentLocation: Option[String] = get(Names.CONTENT_LOCATION)
-  def contentMD5: Option[String] = get(Names.CONTENT_MD5)
-  def contentRange: Option[String] = get(Names.CONTENT_RANGE)
-  def contentTransferEncoding: Option[String] = get(Names.CONTENT_TRANSFER_ENCODING)
-  def contentType: Option[String] = get(Names.CONTENT_TYPE)
+  def contentEncoding: Option[String] = get(HttpHeaderNames.CONTENT_ENCODING)
+  def contentLanguage: Option[String] = get(HttpHeaderNames.CONTENT_LANGUAGE)
+  def contentLength: Option[Long] = getLong(HttpHeaderNames.CONTENT_LENGTH)
+  def contentLocation: Option[String] = get(HttpHeaderNames.CONTENT_LOCATION)
+  def contentMD5: Option[String] = get(HttpHeaderNames.CONTENT_MD5)
+  def contentRange: Option[String] = get(HttpHeaderNames.CONTENT_RANGE)
+  def contentTransferEncoding: Option[String] = get(HttpHeaderNames.CONTENT_TRANSFER_ENCODING)
+  def contentType: Option[String] = get(HttpHeaderNames.CONTENT_TYPE)
   
   /** This is the raw value of the client side cookies that are being sent with the request */
-  def cookie: Option[String] = get(Names.COOKIE)
+  def cookie: Option[String] = get(HttpHeaderNames.COOKIE)
   
   /** These are the client side cookies that are being sent with the request */
   def cookies: Vector[Cookie] = cookie.map{ Cookie.tryParseCookieHeader }.getOrElse{ Vector.empty }
   
-  def date: Option[ImmutableDate] = getDate(Names.DATE)
-  def eTag: Option[String] = get(Names.ETAG)
-  def expect: Option[String] = get(Names.EXPECT)
-  def expires: Option[ImmutableDate] = getDate(Names.EXPIRES)
-  def from: Option[String] = get(Names.FROM)
-  def host: Option[String] = get(Names.HOST)
-  def ifMatch: Option[String] = get(Names.IF_MATCH)
-  def ifModifiedSince: Option[ImmutableDate] = getDate(Names.IF_MODIFIED_SINCE)
-  def ifNoneMatch: Option[String] = get(Names.IF_NONE_MATCH)
-  def ifRange: Option[String] = get(Names.IF_RANGE)
-  def ifUnmodifiedSince: Option[ImmutableDate] = getDate(Names.IF_UNMODIFIED_SINCE)
-  def lastModified: Option[ImmutableDate] = getDate(Names.LAST_MODIFIED)
-  def location: Option[String] = get(Names.LOCATION)
-  def maxForwards: Option[String] = get(Names.MAX_FORWARDS)
-  def origin: Option[String] = get(Names.ORIGIN)
-  def pragma: Option[String] = get(Names.PRAGMA)
-  def proxyAuthencate: Option[String] = get(Names.PROXY_AUTHENTICATE)
-  def proxyAuthorization: Option[String] = get(Names.PROXY_AUTHORIZATION)
-  def range: Option[String] = get(Names.RANGE)
-  def referer: Option[String] = get(Names.REFERER)
-  def retryAfter: Option[String] = get(Names.RETRY_AFTER)
-  def secWebSocketAccept: Option[String] = get(Names.SEC_WEBSOCKET_ACCEPT)
-  def secWebSocketKey: Option[String] = get(Names.SEC_WEBSOCKET_KEY)
-  def secWebSocketKey1: Option[String] = get(Names.SEC_WEBSOCKET_KEY1)
-  def secWebSocketKey2: Option[String] = get(Names.SEC_WEBSOCKET_KEY2)
-  def secWebSocketLocation: Option[String] = get(Names.SEC_WEBSOCKET_LOCATION)
-  def secWebSocketOrigin: Option[String] = get(Names.SEC_WEBSOCKET_ORIGIN)
-  def secWebSocketProtocol: Option[String] = get(Names.SEC_WEBSOCKET_PROTOCOL)
-  def secWebSocketVersion: Option[String] = get(Names.SEC_WEBSOCKET_VERSION)
-  def server: Option[String] = get(Names.SERVER)
+  def date: Option[ImmutableDate] = getDate(HttpHeaderNames.DATE)
+  def eTag: Option[String] = get(HttpHeaderNames.ETAG)
+  def expect: Option[String] = get(HttpHeaderNames.EXPECT)
+  def expires: Option[ImmutableDate] = getDate(HttpHeaderNames.EXPIRES)
+  def from: Option[String] = get(HttpHeaderNames.FROM)
+  def host: Option[String] = get(HttpHeaderNames.HOST)
+  def ifMatch: Option[String] = get(HttpHeaderNames.IF_MATCH)
+  def ifModifiedSince: Option[ImmutableDate] = getDate(HttpHeaderNames.IF_MODIFIED_SINCE)
+  def ifNoneMatch: Option[String] = get(HttpHeaderNames.IF_NONE_MATCH)
+  def ifRange: Option[String] = get(HttpHeaderNames.IF_RANGE)
+  def ifUnmodifiedSince: Option[ImmutableDate] = getDate(HttpHeaderNames.IF_UNMODIFIED_SINCE)
+  def lastModified: Option[ImmutableDate] = getDate(HttpHeaderNames.LAST_MODIFIED)
+  def location: Option[String] = get(HttpHeaderNames.LOCATION)
+  def maxForwards: Option[String] = get(HttpHeaderNames.MAX_FORWARDS)
+  def origin: Option[String] = get(HttpHeaderNames.ORIGIN)
+  def pragma: Option[String] = get(HttpHeaderNames.PRAGMA)
+  def proxyAuthencate: Option[String] = get(HttpHeaderNames.PROXY_AUTHENTICATE)
+  def proxyAuthorization: Option[String] = get(HttpHeaderNames.PROXY_AUTHORIZATION)
+  def range: Option[String] = get(HttpHeaderNames.RANGE)
+  def referer: Option[String] = get(HttpHeaderNames.REFERER)
+  def retryAfter: Option[String] = get(HttpHeaderNames.RETRY_AFTER)
+  def secWebSocketAccept: Option[String] = get(HttpHeaderNames.SEC_WEBSOCKET_ACCEPT)
+  def secWebSocketKey: Option[String] = get(HttpHeaderNames.SEC_WEBSOCKET_KEY)
+  def secWebSocketKey1: Option[String] = get(HttpHeaderNames.SEC_WEBSOCKET_KEY1)
+  def secWebSocketKey2: Option[String] = get(HttpHeaderNames.SEC_WEBSOCKET_KEY2)
+  def secWebSocketLocation: Option[String] = get(HttpHeaderNames.SEC_WEBSOCKET_LOCATION)
+  def secWebSocketOrigin: Option[String] = get(HttpHeaderNames.SEC_WEBSOCKET_ORIGIN)
+  def secWebSocketProtocol: Option[String] = get(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL)
+  def secWebSocketVersion: Option[String] = get(HttpHeaderNames.SEC_WEBSOCKET_VERSION)
+  def server: Option[String] = get(HttpHeaderNames.SERVER)
   
   /** This is the raw value of the server side cookies that are being sent with the response */
-  def setCookie: Vector[String] = getAll(Names.SET_COOKIE)
+  def setCookie: Vector[String] = getAll(HttpHeaderNames.SET_COOKIE)
   
   /** These are the server side cookies that are being sent with the response */
   def setCookies: Vector[Cookie] = setCookie.flatMap{ Cookie.tryParseSetCookieHeader }
 
-  def setCookie2: Vector[String] = getAll(Names.SET_COOKIE2)
-  def te: Option[String] = get(Names.TE)
-  def trailer: Option[String] = get(Names.TRAILER)
-  def transferEncoding: Option[String] = get(Names.TRANSFER_ENCODING)
-  def upgrade: Option[String] = get(Names.UPGRADE)
-  def userAgent: Option[String] = get(Names.USER_AGENT)
-  def vary: Option[String] = get(Names.VARY)
-  def via: Option[String] = get(Names.VIA)
-  def warning: Option[String] = get(Names.WARNING)
-  def webSocketLocation: Option[String] = get(Names.WEBSOCKET_LOCATION)
-  def webSocketOrigin: Option[String] = get(Names.WEBSOCKET_ORIGIN)
-  def webSocketProtocol: Option[String] = get(Names.WEBSOCKET_PROTOCOL)
-  def wwwAuthenticate: Option[String] = get(Names.WWW_AUTHENTICATE)
+  def setCookie2: Vector[String] = getAll(HttpHeaderNames.SET_COOKIE2)
+  def te: Option[String] = get(HttpHeaderNames.TE)
+  def trailer: Option[String] = get(HttpHeaderNames.TRAILER)
+  def transferEncoding: Option[String] = get(HttpHeaderNames.TRANSFER_ENCODING)
+  def upgrade: Option[String] = get(HttpHeaderNames.UPGRADE)
+  def userAgent: Option[String] = get(HttpHeaderNames.USER_AGENT)
+  def vary: Option[String] = get(HttpHeaderNames.VARY)
+  def via: Option[String] = get(HttpHeaderNames.VIA)
+  def warning: Option[String] = get(HttpHeaderNames.WARNING)
+  def webSocketLocation: Option[String] = get(HttpHeaderNames.WEBSOCKET_LOCATION)
+  def webSocketOrigin: Option[String] = get(HttpHeaderNames.WEBSOCKET_ORIGIN)
+  def webSocketProtocol: Option[String] = get(HttpHeaderNames.WEBSOCKET_PROTOCOL)
+  def wwwAuthenticate: Option[String] = get(HttpHeaderNames.WWW_AUTHENTICATE)
   
   //
   // Non-Standard
@@ -372,7 +367,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
 }
 
 final case class ImmutableHeaders(nettyHeaders: HttpHeaders) extends Headers {
-  def withHeaders(headerValues: (String, Any)*): ImmutableHeaders = toMutableHeaders.withHeaders(headerValues:_*).toImmutableHeaders
+  def withHeaders(headerValues: (CharSequence, Any)*): ImmutableHeaders = toMutableHeaders.withHeaders(headerValues:_*).toImmutableHeaders
   
   def withNoCache: ImmutableHeaders = toMutableHeaders.withNoCache.toImmutableHeaders
   
@@ -391,56 +386,55 @@ final case class ImmutableHeaders(nettyHeaders: HttpHeaders) extends Headers {
 
 final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeaders(false /* don't validate */)) extends Headers {
   import Headers._
-  import HttpHeaders.Names
 
-  def add(name: String, value: String): Unit = add(name, Option(value))
+  def add(name: CharSequence, value: String): Unit = add(name, Option(value))
 
-  def add(name: String, value: Option[String]): Unit = value match {
+  def add(name: CharSequence, value: Option[String]): Unit = value match {
     case Some(v) => nettyHeaders.add(name, v)
     case None    => // Don't add
   }
 
-  def set(name: String, value: String): Unit = set(name, Option(value))
+  def set(name: CharSequence, value: String): Unit = set(name, Option(value))
 
-  def set(name: String, value: Option[String]): Unit = value match {
+  def set(name: CharSequence, value: Option[String]): Unit = value match {
     case Some(v) => nettyHeaders.set(name, v)
     case None    => nettyHeaders.remove(name)
   }
 
-  def setAll(name: String, values: Traversable[String]): Unit = {
+  def setAll(name: CharSequence, values: Traversable[String]): Unit = {
     nettyHeaders.remove(name)
     values.foreach{ add(name, _) }
   }
 
-  def setAll(name: String, values: Option[Traversable[String]]): Unit = setAll(name, values.getOrElse{ Nil })
+  def setAll(name: CharSequence, values: Option[Traversable[String]]): Unit = setAll(name, values.getOrElse{ Nil })
 
-  def setDate(name: String, value: Date): Unit = setDate(name, Option(value))
-  def setDate(name: String, value: Option[Date]): Unit = set(name, value.map{ formatDate })
+  def setDate(name: CharSequence, value: Date): Unit = setDate(name, Option(value))
+  def setDate(name: CharSequence, value: Option[Date]): Unit = set(name, value.map{ formatDate })
 
-  def setImmutableDate(name: String, value: ImmutableDate): Unit = setImmutableDate(name, Option(value))
-  def setImmutableDate(name: String, value: Option[ImmutableDate]): Unit = set(name, value.map{ formatDate })
+  def setImmutableDate(name: CharSequence, value: ImmutableDate): Unit = setImmutableDate(name, Option(value))
+  def setImmutableDate(name: CharSequence, value: Option[ImmutableDate]): Unit = set(name, value.map{ formatDate })
 
-  def setOffsetDateTime(name: String, value: OffsetDateTime): Unit = setOffsetDateTime(name, Option(value))
-  def setOffsetDateTime(name: String, value: Option[OffsetDateTime]): Unit = set(name, value.map{ formatDate })
+  def setOffsetDateTime(name: CharSequence, value: OffsetDateTime): Unit = setOffsetDateTime(name, Option(value))
+  def setOffsetDateTime(name: CharSequence, value: Option[OffsetDateTime]): Unit = set(name, value.map{ formatDate })
 
-  def setZonedDateDate(name: String, value: ZonedDateTime): Unit = setZonedDateDate(name, Option(value))
-  def setZonedDateDate(name: String, value: Option[ZonedDateTime]): Unit = set(name, value.map{ formatDate })
+  def setZonedDateDate(name: CharSequence, value: ZonedDateTime): Unit = setZonedDateDate(name, Option(value))
+  def setZonedDateDate(name: CharSequence, value: Option[ZonedDateTime]): Unit = set(name, value.map{ formatDate })
 
-  def setInstant(name: String, value: Instant): Unit = setInstant(name, Option(value))
-  def setInstant(name: String, value: Option[Instant]): Unit = set(name, value.map{ formatDate })
+  def setInstant(name: CharSequence, value: Instant): Unit = setInstant(name, Option(value))
+  def setInstant(name: CharSequence, value: Option[Instant]): Unit = set(name, value.map{ formatDate })
 
-  def setLocalDateTime(name: String, value: LocalDateTime): Unit = setLocalDateTime(name, Option(value))
-  def setLocalDateTime(name: String, value: Option[LocalDateTime]): Unit = set(name, value.map{ formatDate })
+  def setLocalDateTime(name: CharSequence, value: LocalDateTime): Unit = setLocalDateTime(name, Option(value))
+  def setLocalDateTime(name: CharSequence, value: Option[LocalDateTime]): Unit = set(name, value.map{ formatDate })
 
-  def setInt(name: String, value: Int): Unit = set(name, value.toString)
-  def setInt(name: String, value: Option[Int]): Unit = set(name, value.map{ _.toString })
+  def setInt(name: CharSequence, value: Int): Unit = set(name, value.toString)
+  def setInt(name: CharSequence, value: Option[Int]): Unit = set(name, value.map{ _.toString })
 
-  def setLong(name: String, value: Long): Unit = set(name, value.toString)
-  def setLong(name: String, value: Option[Long]): Unit = set(name, value.map{ _.toString })
+  def setLong(name: CharSequence, value: Long): Unit = set(name, value.toString)
+  def setLong(name: CharSequence, value: Option[Long]): Unit = set(name, value.map{ _.toString })
 
   def remove(name: String): Unit = nettyHeaders.remove(name)
 
-  def withHeaders(headerValues: (String, Any)*): MutableHeaders = {
+  def withHeaders(headerValues: (CharSequence, Any)*): MutableHeaders = {
     headerValues.foreach { case (name, value) =>
       value match {
         case str: String => set(name, str)
@@ -477,237 +471,237 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
     this
   }
 
-  def accept_=(v: String): Unit = set(Names.ACCEPT, v)
-  def accept_=(v: Option[String]): Unit = set(Names.ACCEPT, v)
+  def accept_=(v: String): Unit = set(HttpHeaderNames.ACCEPT, v)
+  def accept_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCEPT, v)
 
-  def acceptCharset_=(v: String): Unit = set(Names.ACCEPT_CHARSET, v)
-  def acceptCharset_=(v: Option[String]): Unit = set(Names.ACCEPT_CHARSET, v)
+  def acceptCharset_=(v: String): Unit = set(HttpHeaderNames.ACCEPT_CHARSET, v)
+  def acceptCharset_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCEPT_CHARSET, v)
 
-  def acceptEncoding_=(v: String): Unit = set(Names.ACCEPT_ENCODING, v)
-  def acceptEncoding_=(v: Option[String]): Unit = set(Names.ACCEPT_ENCODING, v)
+  def acceptEncoding_=(v: String): Unit = set(HttpHeaderNames.ACCEPT_ENCODING, v)
+  def acceptEncoding_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCEPT_ENCODING, v)
 
-  def acceptLanguage_=(v: String): Unit = set(Names.ACCEPT_LANGUAGE, v)
-  def acceptLanguage_=(v: Option[String]): Unit = set(Names.ACCEPT_LANGUAGE, v)
+  def acceptLanguage_=(v: String): Unit = set(HttpHeaderNames.ACCEPT_LANGUAGE, v)
+  def acceptLanguage_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCEPT_LANGUAGE, v)
 
-  def acceptPatch_=(v: String): Unit = set(Names.ACCEPT_PATCH, v)
-  def acceptPatch_=(v: Option[String]): Unit = set(Names.ACCEPT_PATCH, v)
+  def acceptPatch_=(v: String): Unit = set(HttpHeaderNames.ACCEPT_PATCH, v)
+  def acceptPatch_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCEPT_PATCH, v)
 
-  def acceptRanges_=(v: String): Unit = set(Names.ACCEPT_RANGES, v)
-  def acceptRanges_=(v: Option[String]): Unit = set(Names.ACCEPT_RANGES, v)
+  def acceptRanges_=(v: String): Unit = set(HttpHeaderNames.ACCEPT_RANGES, v)
+  def acceptRanges_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCEPT_RANGES, v)
 
-  def accessControlAllowCredentials_=(v: String): Unit = set(Names.ACCESS_CONTROL_ALLOW_CREDENTIALS, v)
-  def accessControlAllowCredentials_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_ALLOW_CREDENTIALS, v)
+  def accessControlAllowCredentials_=(v: String): Unit = set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_CREDENTIALS, v)
+  def accessControlAllowCredentials_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_CREDENTIALS, v)
 
-  def accessControlAllowHeaders_=(v: String): Unit = set(Names.ACCESS_CONTROL_ALLOW_HEADERS, v)
-  def accessControlAllowHeaders_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_ALLOW_HEADERS, v)
+  def accessControlAllowHeaders_=(v: String): Unit = set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_HEADERS, v)
+  def accessControlAllowHeaders_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_HEADERS, v)
 
-  def accessControlAllowMethods_=(v: String): Unit = set(Names.ACCESS_CONTROL_ALLOW_METHODS, v)
-  def accessControlAllowMethods_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_ALLOW_METHODS, v)
+  def accessControlAllowMethods_=(v: String): Unit = set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_METHODS, v)
+  def accessControlAllowMethods_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_METHODS, v)
 
-  def accessControlAllowOrigin_=(v: String): Unit = set(Names.ACCESS_CONTROL_ALLOW_ORIGIN, v)
-  def accessControlAllowOrigin_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_ALLOW_ORIGIN, v)
+  def accessControlAllowOrigin_=(v: String): Unit = set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, v)
+  def accessControlAllowOrigin_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN, v)
 
-  def accessControlExposeHeaders_=(v: String): Unit = set(Names.ACCESS_CONTROL_EXPOSE_HEADERS, v)
-  def accessControlExposeHeaders_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_EXPOSE_HEADERS, v)
+  def accessControlExposeHeaders_=(v: String): Unit = set(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, v)
+  def accessControlExposeHeaders_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS, v)
 
-  def accessControlMaxAge_=(v: String): Unit = set(Names.ACCESS_CONTROL_MAX_AGE, v)
-  def accessControlMaxAge_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_MAX_AGE, v)
+  def accessControlMaxAge_=(v: String): Unit = set(HttpHeaderNames.ACCESS_CONTROL_MAX_AGE, v)
+  def accessControlMaxAge_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCESS_CONTROL_MAX_AGE, v)
 
-  def accessControlRequestHEaders_=(v: String): Unit = set(Names.ACCESS_CONTROL_REQUEST_HEADERS, v)
-  def accessControlRequestHEaders_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_REQUEST_HEADERS, v)
+  def accessControlRequestHEaders_=(v: String): Unit = set(HttpHeaderNames.ACCESS_CONTROL_REQUEST_HEADERS, v)
+  def accessControlRequestHEaders_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCESS_CONTROL_REQUEST_HEADERS, v)
 
-  def accessControlRequestMethod_=(v: String): Unit = set(Names.ACCESS_CONTROL_REQUEST_METHOD, v)
-  def accessControlRequestMethod_=(v: Option[String]): Unit = set(Names.ACCESS_CONTROL_REQUEST_METHOD, v)
+  def accessControlRequestMethod_=(v: String): Unit = set(HttpHeaderNames.ACCESS_CONTROL_REQUEST_METHOD, v)
+  def accessControlRequestMethod_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCESS_CONTROL_REQUEST_METHOD, v)
 
-  def age_=(v: Long): Unit = setLong(Names.AGE, v)
-  def age_=(v: Option[Long]): Unit = setLong(Names.AGE, v)
+  def age_=(v: Long): Unit = setLong(HttpHeaderNames.AGE, v)
+  def age_=(v: Option[Long]): Unit = setLong(HttpHeaderNames.AGE, v)
 
-  def allow_=(v: String): Unit = set(Names.ALLOW, v)
-  def allow_=(v: Option[String]): Unit = set(Names.ALLOW, v)
+  def allow_=(v: String): Unit = set(HttpHeaderNames.ALLOW, v)
+  def allow_=(v: Option[String]): Unit = set(HttpHeaderNames.ALLOW, v)
 
-  def authorization_=(v: String): Unit = set(Names.AUTHORIZATION, v)
-  def authorization_=(v: Option[String]): Unit = set(Names.AUTHORIZATION, v)
+  def authorization_=(v: String): Unit = set(HttpHeaderNames.AUTHORIZATION, v)
+  def authorization_=(v: Option[String]): Unit = set(HttpHeaderNames.AUTHORIZATION, v)
 
-  def cacheControl_=(v: String): Unit = set(Names.CACHE_CONTROL, v)
-  def cacheControl_=(v: Option[String]): Unit = set(Names.CACHE_CONTROL, v)
+  def cacheControl_=(v: String): Unit = set(HttpHeaderNames.CACHE_CONTROL, v)
+  def cacheControl_=(v: Option[String]): Unit = set(HttpHeaderNames.CACHE_CONTROL, v)
 
-  def connection_=(v: String): Unit = set(Names.CONNECTION, v)
-  def connection_=(v: Option[String]): Unit = set(Names.CONNECTION, v)
+  def connection_=(v: String): Unit = set(HttpHeaderNames.CONNECTION, v)
+  def connection_=(v: Option[String]): Unit = set(HttpHeaderNames.CONNECTION, v)
 
-  def contentBase_=(v: String): Unit = set(Names.CONTENT_BASE, v)
-  def contentBase_=(v: Option[String]): Unit = set(Names.CONTENT_BASE, v)
+  def contentBase_=(v: String): Unit = set(HttpHeaderNames.CONTENT_BASE, v)
+  def contentBase_=(v: Option[String]): Unit = set(HttpHeaderNames.CONTENT_BASE, v)
 
-  def contentDisposition_=(v: String): Unit = set(AdditionalNames.CONTENT_DISPOSITION, v)
-  def contentDisposition_=(v: Option[String]): Unit = set(AdditionalNames.CONTENT_DISPOSITION, v)
+  def contentDisposition_=(v: String): Unit = set(HttpHeaderNames.CONTENT_DISPOSITION, v)
+  def contentDisposition_=(v: Option[String]): Unit = set(HttpHeaderNames.CONTENT_DISPOSITION, v)
 
   def contentDispositionAttachmentFileName_=(v: String): Unit = contentDisposition = makeContentDispositionAttachmentWithFileName(v)
   def contentDispositionAttachmentFileName_=(v: Option[String]): Unit = contentDisposition = v.map{ makeContentDispositionAttachmentWithFileName }
 
-  def contentEncoding_=(v: String): Unit = set(Names.CONTENT_ENCODING, v)
-  def contentEncoding_=(v: Option[String]): Unit = set(Names.CONTENT_ENCODING, v)
+  def contentEncoding_=(v: String): Unit = set(HttpHeaderNames.CONTENT_ENCODING, v)
+  def contentEncoding_=(v: Option[String]): Unit = set(HttpHeaderNames.CONTENT_ENCODING, v)
 
-  def contentLanguage_=(v: String): Unit = set(Names.CONTENT_LANGUAGE, v)
-  def contentLanguage_=(v: Option[String]): Unit = set(Names.CONTENT_LANGUAGE, v)
+  def contentLanguage_=(v: String): Unit = set(HttpHeaderNames.CONTENT_LANGUAGE, v)
+  def contentLanguage_=(v: Option[String]): Unit = set(HttpHeaderNames.CONTENT_LANGUAGE, v)
 
-  def contentLength_=(v: Long): Unit = setLong(Names.CONTENT_LENGTH, v)
-  def contentLength_=(v: Option[Long]): Unit = setLong(Names.CONTENT_LENGTH, v)
+  def contentLength_=(v: Long): Unit = setLong(HttpHeaderNames.CONTENT_LENGTH, v)
+  def contentLength_=(v: Option[Long]): Unit = setLong(HttpHeaderNames.CONTENT_LENGTH, v)
 
-  def contentLocation_=(v: String): Unit = set(Names.CONTENT_LOCATION, v)
-  def contentLocation_=(v: Option[String]): Unit = set(Names.CONTENT_LOCATION, v)
+  def contentLocation_=(v: String): Unit = set(HttpHeaderNames.CONTENT_LOCATION, v)
+  def contentLocation_=(v: Option[String]): Unit = set(HttpHeaderNames.CONTENT_LOCATION, v)
 
-  def contentMD5_=(v: String): Unit = set(Names.CONTENT_MD5, v)
-  def contentMD5_=(v: Option[String]): Unit = set(Names.CONTENT_MD5, v)
+  def contentMD5_=(v: String): Unit = set(HttpHeaderNames.CONTENT_MD5, v)
+  def contentMD5_=(v: Option[String]): Unit = set(HttpHeaderNames.CONTENT_MD5, v)
 
-  def contentRange_=(v: String): Unit = set(Names.CONTENT_RANGE, v)
-  def contentRange_=(v: Option[String]): Unit = set(Names.CONTENT_RANGE, v)
+  def contentRange_=(v: String): Unit = set(HttpHeaderNames.CONTENT_RANGE, v)
+  def contentRange_=(v: Option[String]): Unit = set(HttpHeaderNames.CONTENT_RANGE, v)
 
-  def contentTransferEncoding_=(v: String): Unit = set(Names.CONTENT_TRANSFER_ENCODING, v)
-  def contentTransferEncoding_=(v: Option[String]): Unit = set(Names.CONTENT_TRANSFER_ENCODING, v)
+  def contentTransferEncoding_=(v: String): Unit = set(HttpHeaderNames.CONTENT_TRANSFER_ENCODING, v)
+  def contentTransferEncoding_=(v: Option[String]): Unit = set(HttpHeaderNames.CONTENT_TRANSFER_ENCODING, v)
 
-  def contentType_=(v: String): Unit = set(Names.CONTENT_TYPE, v)
-  def contentType_=(v: Option[String]): Unit = set(Names.CONTENT_TYPE, v)
+  def contentType_=(v: String): Unit = set(HttpHeaderNames.CONTENT_TYPE, v)
+  def contentType_=(v: Option[String]): Unit = set(HttpHeaderNames.CONTENT_TYPE, v)
 
-  def cookie_=(v: String): Unit = set(Names.COOKIE, v)
-  def cookie_=(v: Option[String]): Unit = set(Names.COOKIE, v)
+  def cookie_=(v: String): Unit = set(HttpHeaderNames.COOKIE, v)
+  def cookie_=(v: Option[String]): Unit = set(HttpHeaderNames.COOKIE, v)
 
   def cookies_=(v: Traversable[Cookie]): Unit = cookie = if (v.nonEmpty) Some(ClientCookieEncoder.LAX.encode(v.toSeq.map{ _.toNettyCookie }.asJava)) else None
   def cookies_=(v: Option[Traversable[Cookie]]): Unit = cookies = v.getOrElse{ Nil }
 
-  def date_=(v: ImmutableDate): Unit = setImmutableDate(Names.DATE, v)
-  def date_=(v: Option[ImmutableDate]): Unit = setImmutableDate(Names.DATE, v)
+  def date_=(v: ImmutableDate): Unit = setImmutableDate(HttpHeaderNames.DATE, v)
+  def date_=(v: Option[ImmutableDate]): Unit = setImmutableDate(HttpHeaderNames.DATE, v)
 
-  def eTag_=(v: String): Unit = set(Names.ETAG, v)
-  def eTag_=(v: Option[String]): Unit = set(Names.ETAG, v)
+  def eTag_=(v: String): Unit = set(HttpHeaderNames.ETAG, v)
+  def eTag_=(v: Option[String]): Unit = set(HttpHeaderNames.ETAG, v)
 
-  def expect_=(v: String): Unit = set(Names.EXPECT, v)
-  def expect_=(v: Option[String]): Unit = set(Names.EXPECT, v)
+  def expect_=(v: String): Unit = set(HttpHeaderNames.EXPECT, v)
+  def expect_=(v: Option[String]): Unit = set(HttpHeaderNames.EXPECT, v)
 
-  def expires_=(v: String): Unit = set(Names.EXPIRES, v)
-  def expires_=(v: ImmutableDate): Unit = setImmutableDate(Names.EXPIRES, v)
-  def expires_=(v: Option[ImmutableDate]): Unit = setImmutableDate(Names.EXPIRES, v)
+  def expires_=(v: String): Unit = set(HttpHeaderNames.EXPIRES, v)
+  def expires_=(v: ImmutableDate): Unit = setImmutableDate(HttpHeaderNames.EXPIRES, v)
+  def expires_=(v: Option[ImmutableDate]): Unit = setImmutableDate(HttpHeaderNames.EXPIRES, v)
 
-  def from_=(v: String): Unit = set(Names.FROM, v)
-  def from_=(v: Option[String]): Unit = set(Names.FROM, v)
+  def from_=(v: String): Unit = set(HttpHeaderNames.FROM, v)
+  def from_=(v: Option[String]): Unit = set(HttpHeaderNames.FROM, v)
 
-  def host_=(v: String): Unit = set(Names.HOST, v)
-  def host_=(v: Option[String]): Unit = set(Names.HOST, v)
+  def host_=(v: String): Unit = set(HttpHeaderNames.HOST, v)
+  def host_=(v: Option[String]): Unit = set(HttpHeaderNames.HOST, v)
 
-  def ifMatch_=(v: String): Unit = set(Names.IF_MATCH, v)
-  def ifMatch_=(v: Option[String]): Unit = set(Names.IF_MATCH, v)
+  def ifMatch_=(v: String): Unit = set(HttpHeaderNames.IF_MATCH, v)
+  def ifMatch_=(v: Option[String]): Unit = set(HttpHeaderNames.IF_MATCH, v)
 
-  def ifModifiedSince_=(v: ImmutableDate): Unit = setImmutableDate(Names.IF_MODIFIED_SINCE, v)
-  def ifModifiedSince_=(v: Option[ImmutableDate]): Unit = setImmutableDate(Names.IF_MODIFIED_SINCE, v)
+  def ifModifiedSince_=(v: ImmutableDate): Unit = setImmutableDate(HttpHeaderNames.IF_MODIFIED_SINCE, v)
+  def ifModifiedSince_=(v: Option[ImmutableDate]): Unit = setImmutableDate(HttpHeaderNames.IF_MODIFIED_SINCE, v)
 
-  def ifNoneMatch_=(v: String): Unit = set(Names.IF_NONE_MATCH, v)
-  def ifNoneMatch_=(v: Option[String]): Unit = set(Names.IF_NONE_MATCH, v)
+  def ifNoneMatch_=(v: String): Unit = set(HttpHeaderNames.IF_NONE_MATCH, v)
+  def ifNoneMatch_=(v: Option[String]): Unit = set(HttpHeaderNames.IF_NONE_MATCH, v)
 
-  def ifRange_=(v: String): Unit = set(Names.IF_RANGE, v)
-  def ifRange_=(v: Option[String]): Unit = set(Names.IF_RANGE, v)
+  def ifRange_=(v: String): Unit = set(HttpHeaderNames.IF_RANGE, v)
+  def ifRange_=(v: Option[String]): Unit = set(HttpHeaderNames.IF_RANGE, v)
 
-  def ifUnmodifiedSince_=(v: ImmutableDate): Unit = setImmutableDate(Names.IF_UNMODIFIED_SINCE, v)
-  def ifUnmodifiedSince_=(v: Option[ImmutableDate]): Unit = setImmutableDate(Names.IF_UNMODIFIED_SINCE, v)
+  def ifUnmodifiedSince_=(v: ImmutableDate): Unit = setImmutableDate(HttpHeaderNames.IF_UNMODIFIED_SINCE, v)
+  def ifUnmodifiedSince_=(v: Option[ImmutableDate]): Unit = setImmutableDate(HttpHeaderNames.IF_UNMODIFIED_SINCE, v)
 
-  def lastModified_=(v: ImmutableDate): Unit = setImmutableDate(Names.LAST_MODIFIED, v)
-  def lastModified_=(v: Option[ImmutableDate]): Unit = setImmutableDate(Names.LAST_MODIFIED, v)
+  def lastModified_=(v: ImmutableDate): Unit = setImmutableDate(HttpHeaderNames.LAST_MODIFIED, v)
+  def lastModified_=(v: Option[ImmutableDate]): Unit = setImmutableDate(HttpHeaderNames.LAST_MODIFIED, v)
 
-  def location_=(v: String): Unit = set(Names.LOCATION, v)
-  def location_=(v: Option[String]): Unit = set(Names.LOCATION, v)
+  def location_=(v: String): Unit = set(HttpHeaderNames.LOCATION, v)
+  def location_=(v: Option[String]): Unit = set(HttpHeaderNames.LOCATION, v)
 
-  def maxForwards_=(v: String): Unit = set(Names.MAX_FORWARDS, v)
-  def maxForwards_=(v: Option[String]): Unit = set(Names.MAX_FORWARDS, v)
+  def maxForwards_=(v: String): Unit = set(HttpHeaderNames.MAX_FORWARDS, v)
+  def maxForwards_=(v: Option[String]): Unit = set(HttpHeaderNames.MAX_FORWARDS, v)
 
-  def origin_=(v: String): Unit = set(Names.ORIGIN, v)
-  def origin_=(v: Option[String]): Unit = set(Names.ORIGIN, v)
+  def origin_=(v: String): Unit = set(HttpHeaderNames.ORIGIN, v)
+  def origin_=(v: Option[String]): Unit = set(HttpHeaderNames.ORIGIN, v)
 
-  def pragma_=(v: String): Unit = set(Names.PRAGMA, v)
-  def pragma_=(v: Option[String]): Unit = set(Names.PRAGMA, v)
+  def pragma_=(v: String): Unit = set(HttpHeaderNames.PRAGMA, v)
+  def pragma_=(v: Option[String]): Unit = set(HttpHeaderNames.PRAGMA, v)
 
-  def proxyAuthencate_=(v: String): Unit = set(Names.PROXY_AUTHENTICATE, v)
-  def proxyAuthencate_=(v: Option[String]): Unit = set(Names.PROXY_AUTHENTICATE, v)
+  def proxyAuthencate_=(v: String): Unit = set(HttpHeaderNames.PROXY_AUTHENTICATE, v)
+  def proxyAuthencate_=(v: Option[String]): Unit = set(HttpHeaderNames.PROXY_AUTHENTICATE, v)
 
-  def proxyAuthorization_=(v: String): Unit = set(Names.PROXY_AUTHORIZATION, v)
-  def proxyAuthorization_=(v: Option[String]): Unit = set(Names.PROXY_AUTHORIZATION, v)
+  def proxyAuthorization_=(v: String): Unit = set(HttpHeaderNames.PROXY_AUTHORIZATION, v)
+  def proxyAuthorization_=(v: Option[String]): Unit = set(HttpHeaderNames.PROXY_AUTHORIZATION, v)
 
-  def range_=(v: String): Unit = set(Names.RANGE, v)
-  def range_=(v: Option[String]): Unit = set(Names.RANGE, v)
+  def range_=(v: String): Unit = set(HttpHeaderNames.RANGE, v)
+  def range_=(v: Option[String]): Unit = set(HttpHeaderNames.RANGE, v)
 
-  def referer_=(v: String): Unit = set(Names.REFERER, v)
-  def referer_=(v: Option[String]): Unit = set(Names.REFERER, v)
+  def referer_=(v: String): Unit = set(HttpHeaderNames.REFERER, v)
+  def referer_=(v: Option[String]): Unit = set(HttpHeaderNames.REFERER, v)
 
-  def retryAfter_=(v: String): Unit = set(Names.RETRY_AFTER, v)
-  def retryAfter_=(v: Option[String]): Unit = set(Names.RETRY_AFTER, v)
+  def retryAfter_=(v: String): Unit = set(HttpHeaderNames.RETRY_AFTER, v)
+  def retryAfter_=(v: Option[String]): Unit = set(HttpHeaderNames.RETRY_AFTER, v)
 
-  def secWebSocketAccept_=(v: String): Unit = set(Names.SEC_WEBSOCKET_ACCEPT, v)
-  def secWebSocketAccept_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_ACCEPT, v)
+  def secWebSocketAccept_=(v: String): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_ACCEPT, v)
+  def secWebSocketAccept_=(v: Option[String]): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_ACCEPT, v)
 
-  def secWebSocketKey_=(v: String): Unit = set(Names.SEC_WEBSOCKET_KEY, v)
-  def secWebSocketKey_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_KEY, v)
+  def secWebSocketKey_=(v: String): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_KEY, v)
+  def secWebSocketKey_=(v: Option[String]): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_KEY, v)
 
-  def secWebSocketKey1_=(v: String): Unit = set(Names.SEC_WEBSOCKET_KEY1, v)
-  def secWebSocketKey1_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_KEY1, v)
+  def secWebSocketKey1_=(v: String): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_KEY1, v)
+  def secWebSocketKey1_=(v: Option[String]): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_KEY1, v)
 
-  def secWebSocketKey2_=(v: String): Unit = set(Names.SEC_WEBSOCKET_KEY2, v)
-  def secWebSocketKey2_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_KEY2, v)
+  def secWebSocketKey2_=(v: String): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_KEY2, v)
+  def secWebSocketKey2_=(v: Option[String]): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_KEY2, v)
 
-  def secWebSocketLocation_=(v: String): Unit = set(Names.SEC_WEBSOCKET_LOCATION, v)
-  def secWebSocketLocation_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_LOCATION, v)
+  def secWebSocketLocation_=(v: String): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_LOCATION, v)
+  def secWebSocketLocation_=(v: Option[String]): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_LOCATION, v)
 
-  def secWebSocketOrigin_=(v: String): Unit = set(Names.SEC_WEBSOCKET_ORIGIN, v)
-  def secWebSocketOrigin_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_ORIGIN, v)
+  def secWebSocketOrigin_=(v: String): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_ORIGIN, v)
+  def secWebSocketOrigin_=(v: Option[String]): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_ORIGIN, v)
 
-  def secWebSocketProtocol_=(v: String): Unit = set(Names.SEC_WEBSOCKET_PROTOCOL, v)
-  def secWebSocketProtocol_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_PROTOCOL, v)
+  def secWebSocketProtocol_=(v: String): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL, v)
+  def secWebSocketProtocol_=(v: Option[String]): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_PROTOCOL, v)
 
-  def secWebSocketVersion_=(v: String): Unit = set(Names.SEC_WEBSOCKET_VERSION, v)
-  def secWebSocketVersion_=(v: Option[String]): Unit = set(Names.SEC_WEBSOCKET_VERSION, v)
+  def secWebSocketVersion_=(v: String): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_VERSION, v)
+  def secWebSocketVersion_=(v: Option[String]): Unit = set(HttpHeaderNames.SEC_WEBSOCKET_VERSION, v)
 
-  def server_=(v: String): Unit = set(Names.SERVER, v)
-  def server_=(v: Option[String]): Unit = set(Names.SERVER, v)
+  def server_=(v: String): Unit = set(HttpHeaderNames.SERVER, v)
+  def server_=(v: Option[String]): Unit = set(HttpHeaderNames.SERVER, v)
 
-  def setCookie_=(v: Traversable[String]): Unit = setAll(Names.SET_COOKIE, v)
-  def setCookie_=(v: Option[Traversable[String]]): Unit = setAll(Names.SET_COOKIE, v)
+  def setCookie_=(v: Traversable[String]): Unit = setAll(HttpHeaderNames.SET_COOKIE, v)
+  def setCookie_=(v: Option[Traversable[String]]): Unit = setAll(HttpHeaderNames.SET_COOKIE, v)
 
   def setCookies_=(v: Traversable[Cookie]): Unit = setCookie = if (v.nonEmpty) Some(v.toSeq.map{ c: Cookie => ServerCookieEncoder.LAX.encode(c.toNettyCookie) }) else None
   def setCookies_=(v: Option[Traversable[Cookie]]): Unit = setCookies = v.getOrElse{ Nil }
 
-  def setCookie2_=(v: Traversable[String]): Unit = setAll(Names.SET_COOKIE2, v)
-  def setCookie2_=(v: Option[Traversable[String]]): Unit = setAll(Names.SET_COOKIE2, v)
+  def setCookie2_=(v: Traversable[String]): Unit = setAll(HttpHeaderNames.SET_COOKIE2, v)
+  def setCookie2_=(v: Option[Traversable[String]]): Unit = setAll(HttpHeaderNames.SET_COOKIE2, v)
 
-  def te_=(v: String): Unit = set(Names.TE, v)
-  def te_=(v: Option[String]): Unit = set(Names.TE, v)
+  def te_=(v: String): Unit = set(HttpHeaderNames.TE, v)
+  def te_=(v: Option[String]): Unit = set(HttpHeaderNames.TE, v)
 
-  def trailer_=(v: String): Unit = set(Names.TRAILER, v)
-  def trailer_=(v: Option[String]): Unit = set(Names.TRAILER, v)
+  def trailer_=(v: String): Unit = set(HttpHeaderNames.TRAILER, v)
+  def trailer_=(v: Option[String]): Unit = set(HttpHeaderNames.TRAILER, v)
 
-  def transferEncoding_=(v: String): Unit = set(Names.TRANSFER_ENCODING, v)
-  def transferEncoding_=(v: Option[String]): Unit = set(Names.TRANSFER_ENCODING, v)
+  def transferEncoding_=(v: String): Unit = set(HttpHeaderNames.TRANSFER_ENCODING, v)
+  def transferEncoding_=(v: Option[String]): Unit = set(HttpHeaderNames.TRANSFER_ENCODING, v)
 
-  def upgrade_=(v: String): Unit = set(Names.UPGRADE, v)
-  def upgrade_=(v: Option[String]): Unit = set(Names.UPGRADE, v)
+  def upgrade_=(v: String): Unit = set(HttpHeaderNames.UPGRADE, v)
+  def upgrade_=(v: Option[String]): Unit = set(HttpHeaderNames.UPGRADE, v)
 
-  def userAgent_=(v: String): Unit = set(Names.USER_AGENT, v)
-  def userAgent_=(v: Option[String]): Unit = set(Names.USER_AGENT, v)
+  def userAgent_=(v: String): Unit = set(HttpHeaderNames.USER_AGENT, v)
+  def userAgent_=(v: Option[String]): Unit = set(HttpHeaderNames.USER_AGENT, v)
 
-  def vary_=(v: String): Unit = set(Names.VARY, v)
-  def vary_=(v: Option[String]): Unit = set(Names.VARY, v)
+  def vary_=(v: String): Unit = set(HttpHeaderNames.VARY, v)
+  def vary_=(v: Option[String]): Unit = set(HttpHeaderNames.VARY, v)
 
-  def via_=(v: String): Unit = set(Names.VIA, v)
-  def via_=(v: Option[String]): Unit = set(Names.VIA, v)
+  def via_=(v: String): Unit = set(HttpHeaderNames.VIA, v)
+  def via_=(v: Option[String]): Unit = set(HttpHeaderNames.VIA, v)
 
-  def warning_=(v: String): Unit = set(Names.WARNING, v)
-  def warning_=(v: Option[String]): Unit = set(Names.WARNING, v)
+  def warning_=(v: String): Unit = set(HttpHeaderNames.WARNING, v)
+  def warning_=(v: Option[String]): Unit = set(HttpHeaderNames.WARNING, v)
 
-  def webSocketLocation_=(v: String): Unit = set(Names.WEBSOCKET_LOCATION, v)
-  def webSocketLocation_=(v: Option[String]): Unit = set(Names.WEBSOCKET_LOCATION, v)
+  def webSocketLocation_=(v: String): Unit = set(HttpHeaderNames.WEBSOCKET_LOCATION, v)
+  def webSocketLocation_=(v: Option[String]): Unit = set(HttpHeaderNames.WEBSOCKET_LOCATION, v)
 
-  def webSocketOrigin_=(v: String): Unit = set(Names.WEBSOCKET_ORIGIN, v)
-  def webSocketOrigin_=(v: Option[String]): Unit = set(Names.WEBSOCKET_ORIGIN, v)
+  def webSocketOrigin_=(v: String): Unit = set(HttpHeaderNames.WEBSOCKET_ORIGIN, v)
+  def webSocketOrigin_=(v: Option[String]): Unit = set(HttpHeaderNames.WEBSOCKET_ORIGIN, v)
 
-  def webSocketProtocol_=(v: String): Unit = set(Names.WEBSOCKET_PROTOCOL, v)
-  def webSocketProtocol_=(v: Option[String]): Unit = set(Names.WEBSOCKET_PROTOCOL, v)
+  def webSocketProtocol_=(v: String): Unit = set(HttpHeaderNames.WEBSOCKET_PROTOCOL, v)
+  def webSocketProtocol_=(v: Option[String]): Unit = set(HttpHeaderNames.WEBSOCKET_PROTOCOL, v)
 
-  def wwwAuthenticate_=(v: String): Unit = set(Names.WWW_AUTHENTICATE, v)
-  def wwwAuthenticate_=(v: Option[String]): Unit = set(Names.WWW_AUTHENTICATE, v)
+  def wwwAuthenticate_=(v: String): Unit = set(HttpHeaderNames.WWW_AUTHENTICATE, v)
+  def wwwAuthenticate_=(v: Option[String]): Unit = set(HttpHeaderNames.WWW_AUTHENTICATE, v)
 
 
   //

@@ -9,7 +9,7 @@ object HttpServerOptions {
    * This is the original default behavior of using the last value of the "X-Forwarded-For" header
    */
   val defaultClientIPLookupSpec: ClientIPLookupSpec = ClientIPLookupSpec(
-    headerName = Headers.NonStandardNames.X_FORWARDED_FOR,
+    headerName = Headers.NonStandardNames.X_FORWARDED_FOR.toString,
     requiredHeaderAndValue = None,
     valueToUse = ClientIPHeaderValueToUse.Last
   )

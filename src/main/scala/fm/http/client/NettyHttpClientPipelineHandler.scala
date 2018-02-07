@@ -136,9 +136,9 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
       require(null ne responsePromise, "No promise to receive the HttpResponse")
       require(!obj.isInstanceOf[HttpContent], "Not Expecting HttpContent!")
 
-      trace("HttpHeaders.isKeepAlive(response) => "+HttpHeaders.isKeepAlive(response))(ctx)
+      trace("HttpUtil.isKeepAlive(response) => "+HttpUtil.isKeepAlive(response))(ctx)
 
-      if (!HttpHeaders.isKeepAlive(response)) {
+      if (!HttpUtil.isKeepAlive(response)) {
         isConnectionClose = true
       }
       
@@ -235,8 +235,8 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
    */
   private def prepareRequest[T <: HttpRequest](request: T): T = {
     val wantKeepAlive: Boolean = null != pool
-    
-    HttpHeaders.setKeepAlive(request, wantKeepAlive)
+
+    HttpUtil.setKeepAlive(request, wantKeepAlive)
     
     request
   }
@@ -245,7 +245,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
     trace("sendFullRequest")
     
     // Set the Content-Length since this is a full response which should have a known size
-    HttpHeaders.setContentLength(request, request.content.readableBytes())
+    HttpUtil.setContentLength(request, request.content.readableBytes())
     
     ctx.writeAndFlush(request).onComplete{
       case Success(_) => channelPromise.setSuccess()
@@ -256,9 +256,9 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   private def sendAsyncRequest(promise: Promise[AsyncResponse], request: HttpRequest, head: LinkedHttpContent, channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {
     trace("sendAsyncRequest")
     
-    // We don't know the size in advance since we'll be using: Transfer-Encoding: chunked 
-    HttpHeaders.removeHeader(request, HttpHeaders.Names.CONTENT_LENGTH)
-    HttpHeaders.setTransferEncodingChunked(request)
+    // We don't know the size in advance since we'll be using: Transfer-Encoding: chunked
+    request.headers().remove(HttpHeaderNames.CONTENT_LENGTH)
+    HttpUtil.setTransferEncodingChunked(request, true)
     
     ctx.writeAndFlush(request).onComplete{
       case Success(_) => sendChunk(promise, Some(head), channelPromise)
@@ -310,7 +310,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
     val length: Long = raf.length()
     
     // Set the Content-Length since we know the length of the file
-    HttpHeaders.setContentLength(request, length)
+    HttpUtil.setContentLength(request, length)
     
     ctx.write(request)
     ctx.writeAndFlush(new DefaultFileRegion(raf.getChannel, 0, length)).flatMap{ _ => 

@@ -44,7 +44,7 @@ libraryDependencies ++= Seq(
 )
 
 libraryDependencies ++= Seq(
-  "io.netty" % "netty-all" % "4.0.56.Final",
+  "io.netty" % "netty-all" % "4.1.25.Final",
   "com.jcraft" % "jzlib" % "1.1.3", // For Netty 4.X
   "com.github.jnr" % "jnr-posix" % "3.0.45", // POSIX Support (getpid and setssid) for the HttpServerApp
   "org.slf4j" % "slf4j-api" % "1.7.25",
