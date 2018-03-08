@@ -109,7 +109,7 @@ object Headers {
   }
   
   private val BasicAuthHeader: Regex = """Basic (.+)""".r
-  private val BasicAuthSplit: Regex = """(.+):(.+)""".r
+  private val BasicAuthSplit: Regex = """(.+):(.*)""".r
   
   private val DigestAuthHeader: Regex = """Digest (.+)""".r
   private val DigestAuthParam: Regex = """(\w+)=(?:"([^"]+)"|([^,]+)),?""".r
