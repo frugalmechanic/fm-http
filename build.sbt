@@ -23,7 +23,7 @@ scalacOptions := Seq(
 
 libraryDependencies ++= Seq(
   "com.frugalmechanic" %% "scala-optparse" % "1.1.2",
-  "com.frugalmechanic" %% "fm-common" % "0.13.0",
+  "com.frugalmechanic" %% "fm-common" % "0.16.0",
   "com.frugalmechanic" %% "fm-lazyseq" % "0.8.0" % "test"
 )
 
