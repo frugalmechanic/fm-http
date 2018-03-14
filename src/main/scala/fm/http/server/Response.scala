@@ -17,7 +17,7 @@ package fm.http.server
 
 import java.io.{File, InputStream, RandomAccessFile}
 import io.netty.buffer.{ByteBuf, Unpooled}
-import io.netty.handler.codec.http._
+import io.netty.handler.codec.http.{ Cookie => NettyCookie, _ }
 import io.netty.util.CharsetUtil
 import fm.http._
 
@@ -86,6 +86,12 @@ object Response {
 sealed trait Response extends Message {
   def status: Status
   def headers: Headers
+
+  // Add new set cookies to the existing response
+  final def addSetCookie(cookie: Cookie): Response = copyHeaders(headers.addSetCookie(cookie))
+  final def addSetCookies(cookies: IndexedSeq[Cookie]): Response = copyHeaders(cookies.foldLeft(headers){ case (h: Headers, c: Cookie) => h.addSetCookie(c) })
+
+  protected def copyHeaders(headers: Headers): Response
 }
 
 /**
@@ -97,6 +103,8 @@ final case class FullResponse(status: Status, headers: Headers = Headers.empty, 
     r.headers().add(headers.nettyHeaders)
     r
   }
+
+  protected def copyHeaders(headers: Headers): Response = copy(headers = headers)
 }
 
 /**
@@ -108,6 +116,8 @@ final case class AsyncResponse(status: Status, headers: Headers, head: LinkedHtt
     r.headers().add(headers.nettyHeaders)
     r
   }
+
+  protected def copyHeaders(headers: Headers): Response = copy(headers = headers)
 }
 
 /**
@@ -119,6 +129,8 @@ final case class FileResponse(status: Status, headers: Headers, file: File) exte
     r.headers().add(headers.nettyHeaders)
     r
   }
+
+  protected def copyHeaders(headers: Headers): Response = copy(headers = headers)
 }
 
 /**
@@ -130,6 +142,8 @@ final case class RandomAccessFileResponse(status: Status, headers: Headers, file
     r.headers().add(headers.nettyHeaders)
     r
   }
+
+  protected def copyHeaders(headers: Headers): Response = copy(headers = headers)
 }
 
 /**
@@ -141,4 +155,6 @@ final case class InputStreamResponse(status: Status, headers: Headers, input: In
     r.headers().add(headers.nettyHeaders)
     r
   }
+
+  protected def copyHeaders(headers: Headers): Response = copy(headers = headers)
 }
