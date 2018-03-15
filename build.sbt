@@ -21,6 +21,8 @@ scalacOptions := Seq(
   "-opt-inline-from:<sources>"
 ) else Nil)
 
+fork in Test := true
+
 libraryDependencies ++= Seq(
   "com.frugalmechanic" %% "scala-optparse" % "1.1.2",
   "com.frugalmechanic" %% "fm-common" % "0.16.0",
