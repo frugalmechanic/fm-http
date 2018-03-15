@@ -195,7 +195,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   
   /** These are the client side cookies that are being sent with the request */
   def addCookie(c: Cookie): Headers = {
-    withSetCookies(cookies.filterNot{ _.name === c.name } :+ c)
+    withCookies(cookies.filterNot{ _.name === c.name } :+ c)
   }
   
   /** These are the server side cookies that are being sent with the response */
