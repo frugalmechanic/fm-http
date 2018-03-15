@@ -438,6 +438,8 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   def setLong(name: String, value: Long): Unit = set(name, value.toString)
   def setLong(name: String, value: Option[Long]): Unit = set(name, value.map{ _.toString })
 
+  def remove(name: String): Unit = nettyHeaders.remove(name)
+
   def withHeaders(headerValues: (String, Any)*): MutableHeaders = {
     headerValues.foreach { case (name, value) =>
       value match {

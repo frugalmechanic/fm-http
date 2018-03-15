@@ -15,7 +15,7 @@
  */
 package fm.http
 
-import fm.common.{Logging, TestHelpers}
+import fm.common.{ImmutableDate, Logging, TestHelpers}
 import fm.common.Implicits._
 import fm.lazyseq.LazySeq
 import io.netty.buffer.{ByteBuf, Unpooled}
@@ -55,7 +55,7 @@ object TestClientAndServer {
 
   val client: HttpClient = HttpClient(maxConnectionsPerHost = 1000, maxRequestQueuePerHost = requestCount, defaultResponseTimeout = 60.seconds)
   val clientNoFollowRedirects: HttpClient = HttpClient(maxConnectionsPerHost = 1000, maxRequestQueuePerHost = requestCount, defaultResponseTimeout = 60.seconds, followRedirects = false)
-  
+
   def startServer(): Unit = server
   def stopServer(): Unit = server.shutdown()
   
@@ -64,7 +64,7 @@ object TestClientAndServer {
   import RouteMatchers._
   
   private def router = RequestRouter(handler)
-  
+
   private val OneMB: Long = 1048576
 
   private val UTF8Header: Headers   = Headers(("Content-Type", "text/html; charset=utf-8"))
@@ -98,6 +98,32 @@ object TestClientAndServer {
 
     case GET("/file")                     => Response.Ok(UTF8Header, tmpFile)
     case GET("/random_access_file")       => Response.Ok(UTF8Header, makeRandomAccessFile("This is a random access file"))
+
+    case GET("/header_modifications")     => {
+      implicit val r: Request = request
+
+      // This should override what gets set as part of the Response.Ok line
+      Response.setHeader("foo", "bar")
+
+      // Should be in addition to the header below
+      Response.addHeader("additive", "two")
+
+      // Should remove the "remove_me" header that gets set below
+      Response.removeHeader("remove_me")
+
+      Response.modifyHeaders{ headers: MutableHeaders =>
+        headers.add("Hello", "World")
+        headers.date = ImmutableDate(1234567890000L)
+      }
+
+      val headers: Headers = Headers(
+        "foo" -> "not_bar",
+        "additive" -> "one",
+        "remove_me" -> "asd"
+      )
+
+      Response.Ok(headers, Unpooled.copiedBuffer("ok", CharsetUtil.ISO_8859_1))
+    }
 
     case POST("/upload")                  => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ sum: Int => Response.Ok(sum.toString) }
     case POST("/close/upload")            => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ sum: Int => Response(Status(200), Headers("Connection" -> "close"), sum.toString) }
@@ -176,11 +202,12 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     s"http://127.0.0.1:${TestClientAndServer.port}"+path
   }
   
-  private def getSync(path: String, expectedCode: Int, expectedBody: String, httpClient: HttpClient = client): Unit = TestHelpers.withCallerInfo{
+  private def getSync(path: String, expectedCode: Int, expectedBody: String, httpClient: HttpClient = client): FullStringResponse = TestHelpers.withCallerInfo{
     val f: Future[FullStringResponse] = getFullStringAsync(path, httpClient)
     val res: FullStringResponse = Await.result(f, 10.seconds)
     res.status.code should equal (expectedCode)
     res.body should equal (expectedBody)
+    res
   }
 
   private def postSync(path: String, postBody: String, expectedCode: Int, expectedBody: String, httpClient: HttpClient = client): Unit = TestHelpers.withCallerInfo{
@@ -351,7 +378,11 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   test("Content-Type: latin1 & UTF-8 Data") {
     getSync("/latin1-header-utf8-data", 200, "Â£") // new String("£".getBytes("UTF-8"), "latin1"))
   }
-  
+
+  test("Ok") {
+    getSync("/ok", 200, "ok")
+  }
+
   test("Redirect") {
     getSync("/redirect", 200, "ok")
   }
@@ -434,6 +465,17 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     LazySeq.wrap(1 to 200).parForeach(threads=64){ _ =>
       getSync("/random_access_file", 200, "This is a random access file")
     }
+  }
+
+  test("Header Modifications") {
+    val response: Response = getSync("/header_modifications", 200, "ok")
+
+    response.headers.get("foo") should equal (Some("bar"))
+    response.headers.getAll("additive") should equal (Vector("one","two"))
+    response.headers.get("remove_me") should equal (None)
+
+    response.headers.get("Hello") should equal (Some("World"))
+    response.headers.date should equal (Some(ImmutableDate(1234567890000L)))
   }
 
 }

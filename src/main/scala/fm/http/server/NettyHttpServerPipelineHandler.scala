@@ -214,6 +214,19 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
       response.headers().add(header, request.id.toHex())
     }
 
+    // Add in any overrides
+    Response.headerModifications.get(request) match {
+      case None =>
+        // Nothing to do
+
+      case Some(builder) =>
+        // Wrap the Netty HttpHeaders in our MutableHeaders
+        val headers: MutableHeaders = MutableHeaders(response.headers())
+
+        // Apply any mutations to the headers (which will modify the underlying netty HttpHeaders)
+        builder.result.foreach{ f: (MutableHeaders => Unit) => f(headers) }
+    }
+
     response
   }
   

@@ -59,9 +59,10 @@ final class Request (
   val id: UUID = UUID()
   
   private[this] val completedPromise: Promise[Unit] = Promise()
-  
-  // Note - This is ONLY accessed via RequestLocal and synchronization is done there
-  private[server] lazy val requestLocalMap: IdentityHashMap[RequestLocal[_],AnyRef] = new IdentityHashMap()
+
+  // This is ONLY accessed by the RequestLocal class (synchronization is performed there)
+  // This is initialized lazily to avoid creating the IdentityHashMap if we never store anything in it.
+  private[server] var requestLocalMap: IdentityHashMap[RequestLocal[_],AnyRef] = null
   
   /**
    * This future is completed when the request has been fully processed

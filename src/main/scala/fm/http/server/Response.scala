@@ -19,9 +19,91 @@ import java.io.{File, InputStream, RandomAccessFile}
 import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.handler.codec.http._
 import io.netty.util.CharsetUtil
-import fm.http._
+import fm.http.{Cookie, _}
+import scala.collection.mutable.Builder
 
 object Response {
+  //
+  // Helpers for setting Headers on the Response
+  //
+
+  /**
+   * These are functions that we want applied to the response headers before going back to the user
+   */
+  private[server] val headerModifications: RequestLocal[Builder[MutableHeaders => Unit, Vector[MutableHeaders => Unit]]] = RequestLocal()
+
+  /**
+   * This allows an out-of-band way to modify the response headers that get sent back for a given request
+   *
+   * These get applied to the headers that come back as part of the Response instance
+   *
+   * Making this private initially in case we decide we don't want to use arbitrary functions.  The API below
+   * (addHeader, setHeader, addCookie) should be enough for our initial use cases.
+   */
+  private[http] def modifyHeaders(f: MutableHeaders => Unit)(implicit request: Request): Unit = {
+    headerModifications.getOrElseUpdate{ Vector.newBuilder[MutableHeaders => Unit] } += f
+  }
+
+  /**
+   * Add a header to the response
+   * @param name The header name
+   * @param value The header value
+   */
+  def addHeader(name: String, value: String)(implicit request: Request): Unit = {
+    modifyHeaders{ _.add(name, value) }
+  }
+
+  /**
+   * Add a header to the response
+   * @param name The header name
+   * @param value The header value
+   */
+  def addHeader(name: String, value: Option[String])(implicit request: Request): Unit = {
+    // Don't do anything if the value is None
+    if (value.isDefined) modifyHeaders{ _.add(name, value.get) }
+  }
+
+  /**
+   * Set/replace a header to the response
+   * @param name The header name
+   * @param value The header value
+   */
+  def setHeader(name: String, value: String)(implicit request: Request): Unit = {
+    modifyHeaders{ _.set(name, value) }
+  }
+
+  /**
+   * Set/replace a header to the response
+   * @param name The header name
+   * @param value The header value
+   */
+  def setHeader(name: String, value: Option[String])(implicit request: Request): Unit = {
+    modifyHeaders{ _.set(name, value.get) }
+  }
+
+  /**
+   * Remove a header to the response
+   * @param name The header name
+   */
+  def removeHeader(name: String)(implicit request: Request): Unit = {
+    modifyHeaders{ _.remove(name) }
+  }
+
+  /**
+   * Adds a cookie to the response (via the Set-Cookie header)
+   *
+   * Note: If a cookie with same name already exists then it is overwritten
+   *
+   * @param c The Cookie to add
+   */
+  def addCookie(c: Cookie)(implicit request: Request): Unit = {
+    modifyHeaders{ _.addSetCookie(c) }
+  }
+
+  //
+  // Helpers for creating responses
+  //
+
   /** 200 */
   def Ok(body: String): FullResponse = FullResponse(Status.OK, Headers.empty, Unpooled.copiedBuffer(body, CharsetUtil.UTF_8))
   def Ok(headers: Headers, body: String): FullResponse = FullResponse(Status.OK, headers, Unpooled.copiedBuffer(body, CharsetUtil.UTF_8))
