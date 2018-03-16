@@ -67,7 +67,11 @@ object TestClientAndServer {
 
   private val OneMB: Long = 1048576
 
-  private val UTF8Header: Headers   = Headers(("Content-Type", "text/html; charset=utf-8"))
+  private val UTF8Header: Headers = Headers(("Content-Type", "text/html; charset=utf-8"))
+
+  // Quoting of the utf-8 seems to not be valid and should be ignored.  Previously this threw an exception
+  private val QuotedUTF8Header: Headers = Headers(("Content-Type", "text/html; charset=\"utf-8\""))
+
   private val Latin1Header: Headers = Headers(("Content-Type", "text/html; charset=ISO-8859-1"))
 
   private implicit def responseToFugure(r: Response): Future[Response] = Future.successful(r)
@@ -83,7 +87,9 @@ object TestClientAndServer {
     case GET("/latin1")                   => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", CharsetUtil.ISO_8859_1))
     case GET("/default-latin1")           => Response.Ok(Headers.empty, Unpooled.copiedBuffer("£", CharsetUtil.ISO_8859_1))
     case GET("/latin1-header-utf8-data")  => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", CharsetUtil.UTF_8))
-    
+
+    case GET("/bad_content_type_charset") => Response.plain(Status.OK, QuotedUTF8Header, "Hello World")
+
     case GET("/ok")                       => Response.Ok(Headers.empty, Unpooled.copiedBuffer("ok", CharsetUtil.ISO_8859_1))
     case GET("/redirect")                 => Response.Found("/ok")
     
@@ -377,6 +383,10 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
 
   test("Content-Type: latin1 & UTF-8 Data") {
     getSync("/latin1-header-utf8-data", 200, "Â£") // new String("£".getBytes("UTF-8"), "latin1"))
+  }
+
+  test("bad_content_type_charset") {
+    getSync("/bad_content_type_charset", 200, "Hello World")
   }
 
   test("Ok") {

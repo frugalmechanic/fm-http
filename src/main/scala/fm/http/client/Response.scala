@@ -17,7 +17,7 @@ package fm.http.client
 
 import io.netty.handler.codec.http.{HttpHeaders, HttpResponse, HttpVersion}
 import java.io.Closeable
-import java.nio.charset.Charset
+import java.nio.charset.{Charset, IllegalCharsetNameException}
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import fm.common.Logging
 import fm.common.Implicits._
@@ -54,13 +54,25 @@ sealed abstract class Response(response: HttpResponse) extends Closeable {
     import Response.CharsetRegex
 
     response.headers().get("Content-Type").toBlankOption.flatMap { contentType: String =>
-      val charset: Option[String] = for (CharsetRegex(group) <- CharsetRegex.findFirstIn(contentType)) yield group
-
-      charset.collect { case charsetName: String if Charset.isSupported(charsetName) =>
-        Charset.forName(charsetName) // Set current charset to that
-      }
+      for {
+        CharsetRegex(charset) <- CharsetRegex.findFirstIn(contentType)
+        if charsetIsSupported(charset)
+      } yield Charset.forName(charset)
     }
   }.getOrElse(defaultCharset)
+
+  private def charsetIsSupported(charset: String): Boolean = {
+    // Charset.isSupported will throw an IllegalArgumentException charset is null.  This explicitly handles that case.
+    if (charset.isBlank) return false
+
+    try {
+      // Note: This will throw IllegalCharsetNameException for stuff like "\"UTF-8\"" or "-UTF-8" which we
+      //       need to translate to false instead of letting an exception be thrown
+      Charset.isSupported(charset)
+    } catch {
+      case _: IllegalCharsetNameException => false
+    }
+  }
 }
 
 /**
