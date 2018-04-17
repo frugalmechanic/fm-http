@@ -19,9 +19,8 @@ import fm.common.{ImmutableDate, Logging, TestHelpers}
 import fm.common.Implicits._
 import fm.lazyseq.LazySeq
 import io.netty.buffer.{ByteBuf, Unpooled}
-import io.netty.util.CharsetUtil
 import java.io.{File, RandomAccessFile}
-import java.nio.charset.StandardCharsets.UTF_8
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
 import scala.concurrent.{Await, Future, Promise}
@@ -46,7 +45,7 @@ object TestClientAndServer {
 
   private def makeTempFile(contents: String): File = {
     val f: File = File.createTempFile("fm-http-tests", ".tmp")
-    Files.write(f.toPath, contents.getBytes(UTF_8))
+    Files.write(f.toPath, contents.getBytes(StandardCharsets.UTF_8))
     f
   }
   
@@ -74,6 +73,10 @@ object TestClientAndServer {
 
   private val Latin1Header: Headers = Headers(("Content-Type", "text/html; charset=ISO-8859-1"))
 
+  private val jsonHeader: Headers = Headers(("Content-Type", MimeTypes.JSON))
+
+  private val jsonLatin1Header: Headers = Headers(("Content-Type", s"${MimeTypes.JSON}; charset=ISO-8859-1"))
+
   private implicit def responseToFugure(r: Response): Future[Response] = Future.successful(r)
   import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -83,14 +86,18 @@ object TestClientAndServer {
     case GET("/data_one_mb")              => Response.Ok(makeLinkedHttpContent(OneMB))
     case GET("/data_hundred_mb")          => Response.Ok(makeLinkedHttpContent(OneMB * 100))
 
-    case GET("/utf-8")                    => Response.Ok(UTF8Header, Unpooled.copiedBuffer("£", CharsetUtil.UTF_8))
-    case GET("/latin1")                   => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", CharsetUtil.ISO_8859_1))
-    case GET("/default-latin1")           => Response.Ok(Headers.empty, Unpooled.copiedBuffer("£", CharsetUtil.ISO_8859_1))
-    case GET("/latin1-header-utf8-data")  => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", CharsetUtil.UTF_8))
+    case GET("/utf-8")                    => Response.Ok(UTF8Header, Unpooled.copiedBuffer("£", StandardCharsets.UTF_8))
+    case GET("/json")                     => Response.Ok(jsonHeader, Unpooled.copiedBuffer("£", StandardCharsets.UTF_8))
+    case GET("/json-latin1")              => Response.Ok(jsonLatin1Header, Unpooled.copiedBuffer("£", StandardCharsets.ISO_8859_1))
+    case GET("/json-latin1-utf8-data")    => Response.Ok(jsonLatin1Header, Unpooled.copiedBuffer("£", StandardCharsets.UTF_8))
+
+    case GET("/latin1")                   => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", StandardCharsets.ISO_8859_1))
+    case GET("/default-latin1")           => Response.Ok(Headers.empty, Unpooled.copiedBuffer("£", StandardCharsets.ISO_8859_1))
+    case GET("/latin1-header-utf8-data")  => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", StandardCharsets.UTF_8))
 
     case GET("/bad_content_type_charset") => Response.plain(Status.OK, QuotedUTF8Header, "Hello World")
 
-    case GET("/ok")                       => Response.Ok(Headers.empty, Unpooled.copiedBuffer("ok", CharsetUtil.ISO_8859_1))
+    case GET("/ok")                       => Response.Ok(Headers.empty, Unpooled.copiedBuffer("ok", StandardCharsets.ISO_8859_1))
     case GET("/redirect")                 => Response.Found("/ok")
     
     case GET("/redirect1")                => Response.Found("/redirect")
@@ -128,7 +135,7 @@ object TestClientAndServer {
         "remove_me" -> "asd"
       )
 
-      Response.Ok(headers, Unpooled.copiedBuffer("ok", CharsetUtil.ISO_8859_1))
+      Response.Ok(headers, Unpooled.copiedBuffer("ok", StandardCharsets.ISO_8859_1))
     }
 
     case POST("/upload")                  => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ sum: Int => Response.Ok(sum.toString) }
@@ -136,8 +143,8 @@ object TestClientAndServer {
   }
 
   private def handleBasicAuth(request: Request): Response = {
-    if (request.headers.basicAuthUserAndPass === Some(("foo", "bar"))) Response.Ok(Headers.empty, Unpooled.copiedBuffer("ok", CharsetUtil.ISO_8859_1))
-    else Response(Status.UNAUTHORIZED, Headers("WWW-Authenticate" -> """Basic realm="Test""""), Unpooled.copiedBuffer("You need a valid user and password to access this content.", CharsetUtil.ISO_8859_1))
+    if (request.headers.basicAuthUserAndPass === Some(("foo", "bar"))) Response.Ok(Headers.empty, Unpooled.copiedBuffer("ok", StandardCharsets.ISO_8859_1))
+    else Response(Status.UNAUTHORIZED, Headers("WWW-Authenticate" -> """Basic realm="Test""""), Unpooled.copiedBuffer("You need a valid user and password to access this content.", StandardCharsets.ISO_8859_1))
   }
   
   // This just cycles through all the ASCII printable chars starting at the space ' ' (20) and ending with '~' (126)
@@ -247,7 +254,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
       }.map{ _ => true }
     }
   }
-  
+
   test("Single Request") {
     getSync("/200", 200, "OK")
   }
@@ -382,7 +389,15 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   }
 
   test("Content-Type: latin1 & UTF-8 Data") {
-    getSync("/latin1-header-utf8-data", 200, "Â£") // new String("£".getBytes("UTF-8"), "latin1"))
+    getSync("/latin1-header-utf8-data", 200, "Â£") // new String("£".getBytes(java.nio.charset.StandardCharsets.UTF_8), java.nio.charset.StandardCharsets.ISO_8859_1)
+  }
+
+  test(s"Content-Type: ${MimeTypes.JSON} latin1") {
+    getSync("/json-latin1", 200, "£")
+  }
+
+  test(s"Content-Type: ${MimeTypes.JSON} latin1 & UTF-8 Data") {
+    getSync("/json-latin1-utf8-data", 200, "Â£") // new String("£".getBytes(java.nio.charset.StandardCharsets.UTF_8), java.nio.charset.StandardCharsets.ISO_8859_1)
   }
 
   test("bad_content_type_charset") {

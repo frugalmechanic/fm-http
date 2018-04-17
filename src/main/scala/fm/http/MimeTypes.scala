@@ -17,6 +17,7 @@ package fm.http
 
 import fm.common.Implicits._
 import java.io.File
+import java.nio.charset.{Charset, StandardCharsets}
 
 object MimeTypes {
   // Images
@@ -80,6 +81,11 @@ object MimeTypes {
     XLSM        -> "xlsm",
     DOC         -> "doc",
     DOCX        -> "docx"
+  ).toUniqueHashMap
+
+  // type -> charset
+  val mimeTypeToCharset = Vector[(String, Charset)](
+    JSON -> StandardCharsets.UTF_8 // http://www.ietf.org/rfc/rfc4627.txt "JSON text SHALL be encoded in Unicode.  The default encoding is UTF-8."
   ).toUniqueHashMap
 
   val compressable: Vector[String] = Vector(HTML,JAVASCRIPT,JSON,CSS,CSV,PLAIN,XML,X_COMPONENT,RSS,SVG,XLS,DOC)

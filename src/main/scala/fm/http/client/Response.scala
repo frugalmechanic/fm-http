@@ -54,10 +54,12 @@ sealed abstract class Response(response: HttpResponse) extends Closeable {
     import Response.CharsetRegex
 
     response.headers().get("Content-Type").toBlankOption.flatMap { contentType: String =>
-      for {
+      val contentTypeCharset: Option[Charset] = for {
         CharsetRegex(charset) <- CharsetRegex.findFirstIn(contentType)
         if charsetIsSupported(charset)
       } yield Charset.forName(charset)
+
+      contentTypeCharset orElse MimeTypes.mimeTypeToCharset.get(contentType)
     }
   }.getOrElse(defaultCharset)
 
