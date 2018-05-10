@@ -43,6 +43,8 @@ abstract class HttpServerApp extends Logging {
 
   /** Override to something like "X-Request-Id" to have the server set the request id in the response */
   protected def requestIdResponseHeader: Option[String] = None
+
+  protected def clientIPLookupSpecs: Seq[HttpServerOptions.ClientIPLookupSpec] = Seq(HttpServerOptions.defaultClientIPLookupSpec)
   
   private[this] val DETATCH_STRING: String = "\u0000"*4 // 4 NULL Characters
   private[this] val IS_CHILD_PROPERTY_KEY: String = "fm.webapp.is_child_process"
@@ -111,7 +113,8 @@ abstract class HttpServerApp extends Logging {
    */
   private def doRun(ports: Set[Int], detatch: Boolean, emailLogging: Boolean): Unit = {
     val options: HttpServerOptions = HttpServerOptions(
-      requestIdResponseHeader = requestIdResponseHeader
+      requestIdResponseHeader = requestIdResponseHeader,
+      clientIPLookupSpecs = clientIPLookupSpecs
     )
 
     // Figure out which port we should listen on    

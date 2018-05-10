@@ -57,8 +57,50 @@ object TestClientAndServer {
 
   def startServer(): Unit = server
   def stopServer(): Unit = server.shutdown()
+
+  private val options: HttpServerOptions = HttpServerOptions(
+    requestIdResponseHeader = Some("X-Request-Id"),
+    clientIPLookupSpecs = Seq(
+      HttpServerOptions.ClientIPLookupSpec(
+        headerName = "X-Client-IP",
+        requiredHeaderAndValue = Some(("X-Is-From-CDN", "abc123")),
+        valueToUse = HttpServerOptions.ClientIPHeaderValueToUse.First
+      ),
+      HttpServerOptions.defaultClientIPLookupSpec,
+      HttpServerOptions.ClientIPLookupSpec(
+        headerName = "X-Forwarded-For-First-Idx0",
+        requiredHeaderAndValue = None,
+        valueToUse = HttpServerOptions.ClientIPHeaderValueToUse.OffsetFromFirst(0)
+      ),
+      HttpServerOptions.ClientIPLookupSpec(
+        headerName = "X-Forwarded-For-First-Idx1",
+        requiredHeaderAndValue = None,
+        valueToUse = HttpServerOptions.ClientIPHeaderValueToUse.OffsetFromFirst(1)
+      ),
+      HttpServerOptions.ClientIPLookupSpec(
+        headerName = "X-Forwarded-For-First-Idx2",
+        requiredHeaderAndValue = None,
+        valueToUse = HttpServerOptions.ClientIPHeaderValueToUse.OffsetFromFirst(2)
+      ),
+      HttpServerOptions.ClientIPLookupSpec(
+        headerName = "X-Forwarded-For-Last-Idx0",
+        requiredHeaderAndValue = None,
+        valueToUse = HttpServerOptions.ClientIPHeaderValueToUse.OffsetFromLast(0)
+      ),
+      HttpServerOptions.ClientIPLookupSpec(
+        headerName = "X-Forwarded-For-Last-Idx1",
+        requiredHeaderAndValue = None,
+        valueToUse = HttpServerOptions.ClientIPHeaderValueToUse.OffsetFromLast(1)
+      ),
+      HttpServerOptions.ClientIPLookupSpec(
+        headerName = "X-Forwarded-For-Last-Idx2",
+        requiredHeaderAndValue = None,
+        valueToUse = HttpServerOptions.ClientIPHeaderValueToUse.OffsetFromLast(2)
+      )
+    )
+  )
   
-  private lazy val server: HttpServer = HttpServer(port, router, "ABC123")
+  private lazy val server: HttpServer = HttpServer(port, router, "ABC123", options)
   
   import RouteMatchers._
   
@@ -106,6 +148,8 @@ object TestClientAndServer {
     case GET("/redirect4")                => Response.Found("/redirect3")
     case GET("/redirect5")                => Response.Found("/redirect4")
     case GET("/redirect6")                => Response.Found("/redirect5")
+
+    case GET("/ip")                       => Response.Ok(request.remoteIp.toString)
 
     case GET("/basic_auth")               => handleBasicAuth(request)
 
@@ -215,24 +259,48 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     s"http://127.0.0.1:${TestClientAndServer.port}"+path
   }
   
-  private def getSync(path: String, expectedCode: Int, expectedBody: String, httpClient: HttpClient = client): FullStringResponse = TestHelpers.withCallerInfo{
-    val f: Future[FullStringResponse] = getFullStringAsync(path, httpClient)
+  private def getSync(
+    path: String,
+    expectedCode: Int,
+    expectedBody: String,
+    httpClient: HttpClient = client,
+    headers: Headers = Headers.empty
+  ): FullStringResponse = TestHelpers.withCallerInfo{
+    val f: Future[FullStringResponse] = getFullStringAsync(path, httpClient, headers)
     val res: FullStringResponse = Await.result(f, 10.seconds)
     res.status.code should equal (expectedCode)
     res.body should equal (expectedBody)
     res
   }
 
-  private def postSync(path: String, postBody: String, expectedCode: Int, expectedBody: String, httpClient: HttpClient = client): Unit = TestHelpers.withCallerInfo{
+  private def postSync(
+    path: String,
+    postBody: String,
+    expectedCode: Int,
+    expectedBody: String,
+    httpClient: HttpClient = client
+  ): Unit = TestHelpers.withCallerInfo{
     val f: Future[FullStringResponse] = postFullStringAsync(path, postBody, httpClient)
     val res: FullStringResponse = Await.result(f, 10.seconds)
     res.status.code should equal (expectedCode)
     res.body should equal (expectedBody)
   }
   
-  private def getFullStringAsync(path: String, httpClient: HttpClient = client): Future[FullStringResponse] = httpClient.getFullString(makeUrl(path))
+  private def getFullStringAsync(
+    path: String,
+    httpClient: HttpClient = client,
+    headers: Headers = Headers.empty
+  ): Future[FullStringResponse] = {
+    httpClient.getFullString(makeUrl(path), headers)
+  }
 
-  private def postFullStringAsync(path: String, postBody: String, httpClient: HttpClient = client): Future[FullStringResponse] = httpClient.postFullString(makeUrl(path), postBody)
+  private def postFullStringAsync(
+    path: String,
+    postBody: String,
+    httpClient: HttpClient = client
+  ): Future[FullStringResponse] = {
+    httpClient.postFullString(makeUrl(path), postBody)
+  }
   
   private def getAndVerifyData(path: String): Future[Boolean] = {
     client.getAsync(makeUrl(path)).flatMap{ response: AsyncResponse =>
@@ -503,4 +571,57 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     response.headers.date should equal (Some(ImmutableDate(1234567890000L)))
   }
 
+  test("Remote IP") {
+    checkIp("127.0.0.1")
+
+    checkIp("127.0.0.1", "X-Forwarded-For" -> "")
+    checkIp("127.0.0.1", "X-Forwarded-For" -> "foo")
+    checkIp("1.1.1.1", "X-Forwarded-For" -> "1.1.1.1")
+    checkIp("2.2.2.2", "X-Forwarded-For" -> "1.1.1.1,2.2.2.2")
+
+    checkIp("127.0.0.1", "X-Client-Ip" -> "1.1.1.1")
+    checkIp("9.9.9.9", "X-Client-Ip" -> "1.1.1.1", "X-Forwarded-For" -> "9.9.9.9")
+    checkIp("9.9.9.9", "X-Client-Ip" -> "foo", "X-Forwarded-For" -> "9.9.9.9")
+    checkIp("1.1.1.1", "X-Client-Ip" -> "1.1.1.1", "X-Is-From-CDN" -> "abc123")
+    checkIp("127.0.0.1", "X-Client-Ip" -> "foo", "X-Is-From-CDN" -> "abc123")
+    checkIp("1.1.1.1", "X-Client-Ip" -> "1.1.1.1", "X-Is-From-CDN" -> "abc123", "X-Forwarded-For" -> "9.9.9.9")
+    checkIp("9.9.9.9", "X-Client-Ip" -> "", "X-Is-From-CDN" -> "abc123", "X-Forwarded-For" -> "9.9.9.9")
+    checkIp("9.9.9.9", "X-Client-Ip" -> "foo", "X-Is-From-CDN" -> "abc123", "X-Forwarded-For" -> "9.9.9.9")
+
+    checkIp("127.0.0.1", "X-Forwarded-For-First-Idx0" -> "")
+    checkIp("127.0.0.1", "X-Forwarded-For-First-Idx0" -> "foo")
+    checkIp("1.1.1.1", "X-Forwarded-For-First-Idx0" -> "1.1.1.1")
+    checkIp("1.1.1.1", "X-Forwarded-For-First-Idx0" -> "1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4")
+
+    checkIp("127.0.0.1", "X-Forwarded-For-First-Idx1" -> "")
+    checkIp("127.0.0.1", "X-Forwarded-For-First-Idx1" -> "foo")
+    checkIp("1.1.1.1", "X-Forwarded-For-First-Idx1" -> "1.1.1.1")
+    checkIp("2.2.2.2", "X-Forwarded-For-First-Idx1" -> "1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4")
+
+    checkIp("127.0.0.1", "X-Forwarded-For-First-Idx2" -> "")
+    checkIp("127.0.0.1", "X-Forwarded-For-First-Idx2" -> "foo")
+    checkIp("1.1.1.1", "X-Forwarded-For-First-Idx2" -> "1.1.1.1")
+    checkIp("3.3.3.3", "X-Forwarded-For-First-Idx2" -> "1.1.1.1,2.2.2.2,3.3.3.3")
+    checkIp("3.3.3.3", "X-Forwarded-For-First-Idx2" -> "1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4")
+
+    checkIp("127.0.0.1", "X-Forwarded-For-Last-Idx0" -> "")
+    checkIp("127.0.0.1", "X-Forwarded-For-Last-Idx0" -> "foo")
+    checkIp("4.4.4.4", "X-Forwarded-For-Last-Idx0" -> "1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4")
+    checkIp("1.1.1.1", "X-Forwarded-For-Last-Idx0" -> "1.1.1.1")
+
+    checkIp("127.0.0.1", "X-Forwarded-For-Last-Idx1" -> "")
+    checkIp("127.0.0.1", "X-Forwarded-For-Last-Idx1" -> "foo")
+    checkIp("3.3.3.3", "X-Forwarded-For-Last-Idx1" -> "1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4")
+    checkIp("1.1.1.1", "X-Forwarded-For-Last-Idx1" -> "1.1.1.1")
+
+    checkIp("127.0.0.1", "X-Forwarded-For-Last-Idx2" -> "")
+    checkIp("127.0.0.1", "X-Forwarded-For-Last-Idx2" -> "foo")
+    checkIp("1.1.1.1", "X-Forwarded-For-Last-Idx2" -> "1.1.1.1,2.2.2.2,3.3.3.3")
+    checkIp("2.2.2.2", "X-Forwarded-For-Last-Idx2" -> "1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4")
+    checkIp("1.1.1.1", "X-Forwarded-For-Last-Idx2" -> "1.1.1.1")
+  }
+
+  private def checkIp(expected: String, headers: (String,String)*): Unit = TestHelpers.withCallerInfo{
+    getSync("/ip", 200, expected, headers = Headers(headers:_*))
+  }
 }

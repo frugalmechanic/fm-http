@@ -15,17 +15,15 @@
  */
 package fm.http.server
 
-import fm.common.{IP, Logging}
+import fm.common.{IP, InvalidIPException, Logging}
 import fm.common.Implicits._
 import fm.http._
-
 import io.netty.buffer.Unpooled
 import io.netty.channel.{Channel, ChannelHandlerContext, DefaultFileRegion, SimpleChannelInboundHandler}
 import io.netty.channel.group.ChannelGroup
 import io.netty.handler.codec.http._
 import io.netty.handler.stream.{ChunkedFile, ChunkedStream}
 import io.netty.util.{AttributeKey, CharsetUtil}
-
 import java.io.{File, FileNotFoundException, InputStream, RandomAccessFile}
 import java.util.Date
 import scala.concurrent.{ExecutionContext, Future}
@@ -182,17 +180,42 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     (r, future)
   }
   
-  /**
-   * TODO: test this with HAProxy/Apache/Nginx
-   */
   private def remoteIPForRequest(request: HttpRequest)(implicit ctx: ChannelHandlerContext): IP = {
     import scala.collection.JavaConverters._
     import java.net.InetSocketAddress
-    
-    Seq("X-Forwarded-For").flatMap{ name: String =>
-      // We only care about the last value for the Header (since HAProxy/Apache appends it's value)
-      request.headers().getAll(name).asScala.flatMap{ IP.findAllIPsIn }.lastOption
-    }.headOption.getOrElse{ IP(ctx.channel().remoteAddress().asInstanceOf[InetSocketAddress].getAddress) }
+
+    val headers: HttpHeaders = request.headers()
+
+    options.clientIPLookupSpecs.findMapped{ spec: HttpServerOptions.ClientIPLookupSpec =>
+      val hasRequiredHeaderOrEmpty: Boolean = spec.requiredHeaderAndValue.map{ case (name: String, value: String) =>
+        // If the requiredHeaderAndValue is set then we require it to be part of the headers
+        headers.containsValue(name, value, false /* ignoreCase */)
+      }.getOrElse(true) // If requiredHeaderAndValue is not set then we are okay
+
+      if (hasRequiredHeaderOrEmpty) {
+        val ips: IndexedSeq[IP] = headers.getAll(spec.headerName).asScala.flatMap{ IP.findAllIPsIn }.toIndexedSeq
+
+        import HttpServerOptions.ClientIPHeaderValueToUse._
+
+        spec.valueToUse match {
+          case First                => ips.headOption
+          case Last                 => ips.lastOption
+          case OffsetFromFirst(idx) => if (ips.length > idx) Some(ips(idx)) else ips.headOption
+          case OffsetFromLast(idx)  => if (ips.length > idx) Some(ips(ips.length - 1 - idx)) else ips.lastOption
+        }
+      } else {
+        None
+      }
+    }.getOrElse{
+      try {
+        // Default to the IP of whoever is actually connecting to us
+        IP(ctx.channel().remoteAddress().asInstanceOf[InetSocketAddress].getAddress)
+      } catch {
+        // Note: This currently fails on IPv6 Addresses since the fm.common.IP class does not support them.  In that
+        //       case we currently just return IP.empty (0) as the IP to prevent the server from completely failing
+        case _: InvalidIPException => IP.empty
+      }
+    }
 
   }
 
