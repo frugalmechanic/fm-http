@@ -18,6 +18,7 @@ package fm.http.server
 import fm.common.{IP, Logging, QueryParams, UUID}
 import fm.common.Implicits._
 import fm.http._
+import io.netty.buffer.ByteBuf
 import java.io.Closeable
 import java.util.IdentityHashMap
 import io.netty.handler.codec.http.{HttpHeaders, HttpMethod, HttpVersion}
@@ -27,7 +28,13 @@ import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
 object Request {
-  def apply(remoteIp: IP, request: HttpRequest, content: LinkedHttpContentReader)(implicit execution: ExecutionContext): Request = new Request(remoteIp, request, content)
+  def apply(
+    remoteIp: IP,
+    request: HttpRequest,
+    content: LinkedHttpContentReader
+  )(implicit execution: ExecutionContext): Request = {
+    new Request(remoteIp, request, content)
+  }
 
   def dummy(remoteIp: IP, method: HttpMethod, uri: String)(implicit execution: ExecutionContext): Request = {
     apply(remoteIp, new DefaultHttpRequest(HttpVersion.HTTP_1_1, method, uri), LinkedHttpContentReader.empty)
@@ -134,8 +141,15 @@ final class Request (
    * The contents of the POST/PUT/PATCH body.  Only access this value if you want to initiate receiving the data
    */
   lazy val postBody: Future[PostBody] = postDecoder match {
-    case Some(decoder) => content.foldLeft(decoder){ (decoder, buf) => decoder.offer(new DefaultHttpContent(buf)); decoder }.map{ _.offer(LastHttpContent.EMPTY_LAST_CONTENT) }.map{ decoder => PostBody.fromNetty(decoder.getBodyHttpDatas().asScala.toVector) }
     case None => Future.successful(PostBody.empty)
+    case Some(decoder) =>
+      content.foldLeft(decoder){ (decoder: HttpPostRequestDecoder, buf: ByteBuf) =>
+        decoder.offer(new DefaultHttpContent(buf))
+        decoder
+      }.map{ decoder: HttpPostRequestDecoder =>
+        decoder.offer(LastHttpContent.EMPTY_LAST_CONTENT)
+        PostBody.fromNetty(decoder.getBodyHttpDatas().asScala.toVector)
+      }
   }
 
   def isOPTIONS: Boolean = method === HttpMethod.OPTIONS
