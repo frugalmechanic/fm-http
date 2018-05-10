@@ -300,11 +300,11 @@ abstract class HttpServerApp extends Logging {
     code
   }
   
-  private final case class FMPOSIXHandler(verbose: Boolean) extends DefaultPOSIXHandler {
+  private case class FMPOSIXHandler(verbose: Boolean) extends DefaultPOSIXHandler {
     override def isVerbose(): Boolean = verbose
   }
   
-  private final case class LoggingOutputStream(name: String) extends OutputStream {
+  private case class LoggingOutputStream(name: String) extends OutputStream {
     private[this] val logger = LoggerFactory.getLogger(name)
 
     override def write(bytes: Array[Byte]): Unit = write(bytes, 0, bytes.length)

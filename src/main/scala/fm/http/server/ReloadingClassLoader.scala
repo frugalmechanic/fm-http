@@ -3,7 +3,6 @@ package fm.http.server
 import fm.common.IOUtils
 import fm.common.Implicits._
 import java.io.InputStream
-import java.lang.reflect.Method
 import java.net.{URL, URLConnection}
 import java.security.{ProtectionDomain, Policy, CodeSource, CodeSigner}
 import java.util.concurrent.ConcurrentHashMap
@@ -99,15 +98,15 @@ final class ReloadingClassLoader(allowedPackages: Seq[String], parent: ClassLoad
     allowedPackages.exists{ name.startsWith }
   }
 
-  // findLoadedClass is a protected method so in order to get access to it we
-  // have to play the reflection game to unprotect the method
-  private[this] val parentFindLoadedClassMethod: Method = {
-    val m = classOf[ClassLoader].getDeclaredMethod("findLoadedClass", classOf[String])
-    m.setAccessible(true)
-    m
-  }
-
-  private def parentFindLoadedClass(name: String): Class[_] = parentFindLoadedClassMethod.invoke(parent, name).asInstanceOf[Class[_]]
+//  // findLoadedClass is a protected method so in order to get access to it we
+//  // have to play the reflection game to unprotect the method
+//  private[this] val parentFindLoadedClassMethod: Method = {
+//    val m = classOf[ClassLoader].getDeclaredMethod("findLoadedClass", classOf[String])
+//    m.setAccessible(true)
+//    m
+//  }
+//
+//  private def parentFindLoadedClass(name: String): Class[_] = parentFindLoadedClassMethod.invoke(parent, name).asInstanceOf[Class[_]]
 
   private def debug(msg: => String): Unit = if (debug) println(""+System.identityHashCode(this)+": "+msg)
   

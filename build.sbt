@@ -8,6 +8,15 @@ scalaVersion := "2.12.6"
 
 crossScalaVersions := Seq("2.11.11", "2.12.6")
 
+val fatalWarnings = Seq(
+  // Enable -Xlint, but disable the default 'unused' so we can manually specify below
+  "-Xlint:-unused",
+  // Remove "params" since we often have method signatures that intentionally have the parameters, but may not be used in every implementation, also omit "patvars" since it isn't part of the default xlint:unused and isn't super helpful
+  "-Ywarn-unused:imports,privates,locals",
+  // Warnings become Errors
+  "-Xfatal-warnings"
+)
+
 scalacOptions := Seq(
   "-unchecked",
   "-deprecation",
@@ -19,7 +28,12 @@ scalacOptions := Seq(
   // Scala 2.12 specific compiler flags
   "-opt:l:inline",
   "-opt-inline-from:<sources>"
-) else Nil)
+) else Nil) ++ (if (scalaVersion.value.startsWith("2.12")) fatalWarnings else Nil)
+
+// -Ywarn-unused-import/-Xfatal-warnings casues issues in the REPL and also during doc generation
+scalacOptions in (Compile, console) --= fatalWarnings
+scalacOptions in (Test, console) --= fatalWarnings
+scalacOptions in (Compile, doc) --= fatalWarnings
 
 fork in Test := true
 

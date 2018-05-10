@@ -135,8 +135,8 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     // TODO: handle HEAD requests where we don't want to send back the body
     response.recover { case ex: Throwable =>
       logger.error("Caught Exception waiting for Response Future - Sending Error Response", ex)
-      sendFullResponse(request, prepareResponse(request, makeErrorResponse(Status.INTERNAL_SERVER_ERROR).toFullHttpResponse(version), wantKeepAlive))
-    }.onSuccess { res: Response => res match {
+      makeErrorResponse(Status.INTERNAL_SERVER_ERROR)
+    }.foreach { res: Response => res match {
       case full:  FullResponse             => sendFullResponse(request, prepareResponse(request, full.toFullHttpResponse(version), wantKeepAlive))
       case async: AsyncResponse            => sendAsyncResponse(request, prepareResponse(request, async.toHttpResponse(version), wantKeepAlive), async.head)
       case input: InputStreamResponse      => sendInputStreamResponse(request, prepareResponse(request, input.toHttpResponse(version), wantKeepAlive), input.input, input.length)
