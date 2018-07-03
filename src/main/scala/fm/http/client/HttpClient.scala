@@ -23,7 +23,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 
 /**
- * This holds a single copy of the NioEventLoopGroup / NettyExecutionContext 
+ * This holds a single copy of the EventLoopGroup / NettyExecutionContext
  */
 object HttpClient {
 

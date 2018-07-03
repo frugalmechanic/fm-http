@@ -31,7 +31,7 @@ object NettyFutureWrapper {
 
 /**
  * Wraps Netty's Future as a Scala Future while ensuring that the ExecutionContext
- * is Netty's NioEventLoopGroup
+ * is Netty's EventLoopGroup
  */
 final case class NettyFutureWrapper[T](val f: NettyFuture[T]) extends Future[T] {
   

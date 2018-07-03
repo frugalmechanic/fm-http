@@ -18,31 +18,26 @@ package fm.http.client
 import fm.common.Implicits._
 import fm.common.{IP, Logging, URI, URL}
 import fm.http._
-
 import io.netty.bootstrap.Bootstrap
-import io.netty.channel.{Channel, ChannelFuture, ChannelInitializer, ChannelOption, ChannelPipeline}
+import io.netty.channel._
 import io.netty.channel.group.{ChannelGroup, DefaultChannelGroup}
-import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.SocketChannel
-import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.codec.http.{HttpClientCodec, HttpMethod}
 import io.netty.handler.codec.socks._
 import io.netty.handler.ssl.{SslContext, SslContextBuilder}
 import io.netty.util.concurrent.GlobalEventExecutor
-
 import java.util.concurrent.{ConcurrentHashMap, TimeoutException}
 import java.io.IOException
 import java.nio.charset.Charset
 import java.lang.ref.WeakReference
 import java.net.MalformedURLException
-
 import scala.concurrent.{Future, Promise}
 import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
 
 
 /**
- * This holds a single copy of the NioEventLoopGroup / NettyExecutionContext 
+ * This holds a single copy of the EventLoopGroup / NettyExecutionContext
  */
 object DefaultHttpClient extends Logging {
   import HttpClient.{executionContext, timer}
@@ -51,7 +46,7 @@ object DefaultHttpClient extends Logging {
 //    workerGroup.shutdownGracefully(1, 15, TimeUnit.SECONDS)
 //  }
   
-  private val workerGroup: NioEventLoopGroup = new NioEventLoopGroup(0, new ThreadFactory("fm-http-client-worker", daemon = true))
+  private val workerGroup: EventLoopGroup = NativeHelpers.makeEventLoopGroup(0, new ThreadFactory("fm-http-client-worker", daemon = true))
     
   /**
    * Simple ThreadFactory that allows us to name the threads something reasonable and set the daemon flag
@@ -396,7 +391,7 @@ final case class DefaultHttpClient(
   private def makeBootstrap(ssl: Boolean, host: String, port: Int): Bootstrap = {
     val b: Bootstrap = new Bootstrap()
     b.group(workerGroup)
-    b.channel(classOf[NioSocketChannel])
+    b.channel(NativeHelpers.socketChannelClass)
     b.option[java.lang.Boolean](ChannelOption.AUTO_READ, false) // ChannelHandlerContext.read() must be explicitly called when we want a message read
     b.handler(new ChannelInitializer[SocketChannel] {
        def initChannel(ch: SocketChannel): Unit = {

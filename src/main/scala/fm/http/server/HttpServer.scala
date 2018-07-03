@@ -20,17 +20,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 import scala.concurrent.duration.Duration
 import io.netty.bootstrap.ServerBootstrap
-import io.netty.channel.{Channel, ChannelInitializer, ChannelOption, ChannelPipeline}
+import io.netty.channel._
 import io.netty.channel.group.{ChannelGroup, DefaultChannelGroup}
-import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.SocketChannel
-import io.netty.channel.socket.nio.NioServerSocketChannel
 import io.netty.handler.codec.http.{HttpRequestDecoder, HttpResponseEncoder}
 import io.netty.handler.stream.ChunkedWriteHandler
 import io.netty.util.concurrent.GlobalEventExecutor
 import fm.common.Implicits._
 import fm.common.{Logging, ScheduledTaskRunner}
-import fm.http.HttpExecutionContext
+import fm.http.{HttpExecutionContext, NativeHelpers}
 
 object HttpServer {
   
@@ -68,8 +66,8 @@ final case class HttpServer (port: Int = 8080, router: RequestRouter, authKey: S
   def enablePing():  Unit = controlHandler.enabled = true
   def disablePing(): Unit = controlHandler.enabled = false
   
-  private[this] val bossGroup: NioEventLoopGroup = new NioEventLoopGroup(0, new HttpServer.ThreadFactory("fm-http-server-boss", daemon = false))
-  private[this] val workerGroup: NioEventLoopGroup = new NioEventLoopGroup(0, new HttpServer.ThreadFactory("fm-http-server-worker", daemon = false))
+  private[this] val bossGroup: EventLoopGroup = NativeHelpers.makeEventLoopGroup(0, new HttpServer.ThreadFactory("fm-http-server-boss", daemon = false))
+  private[this] val workerGroup: EventLoopGroup = NativeHelpers.makeEventLoopGroup(0, new HttpServer.ThreadFactory("fm-http-server-worker", daemon = false))
   
   /** A flag to indicate that we've already called the shutdown() method to avoid calling it twice */
   private[this] val isShuttingDown: AtomicBoolean = new AtomicBoolean(false)
@@ -86,7 +84,7 @@ final case class HttpServer (port: Int = 8080, router: RequestRouter, authKey: S
   private[this] val serverChannel: Channel = {
     val b: ServerBootstrap = new ServerBootstrap
     b.group(bossGroup, workerGroup)
-    b.channel(classOf[NioServerSocketChannel])
+    b.channel(NativeHelpers.serverSocketChannelClass)
     b.option[Integer](ChannelOption.SO_BACKLOG, 1024)
     b.localAddress(port)
     b.childOption[java.lang.Boolean](ChannelOption.TCP_NODELAY, true)
