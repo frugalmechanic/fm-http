@@ -16,7 +16,7 @@
 package fm.http.server
 
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 import scala.concurrent.duration.Duration
 import io.netty.bootstrap.ServerBootstrap
@@ -36,7 +36,7 @@ object HttpServer {
    * Simple ThreadFactory that allows us to name the threads something reasonable and set the daemon flag
    */
   private final class ThreadFactory(name: String, daemon: Boolean) extends java.util.concurrent.ThreadFactory {
-    private[this] val count = new java.util.concurrent.atomic.AtomicInteger(0)
+    private[this] val count: AtomicInteger = new AtomicInteger(0)
     def newThread(r: Runnable): Thread = {
       val thread: Thread = new Thread(r, name+"-"+count.incrementAndGet())
       thread.setDaemon(daemon)
@@ -47,7 +47,7 @@ object HttpServer {
   private final class ShutdownHookThread(name: String, _server: HttpServer) extends Thread("WebServer Shutdown Hook - "+name) with Logging {
     // Using a weak reference so this thread doesn't prevent the WebServer from being
     // GC'ed (which is useful for SBT unit testing where the JVM stays up a long time)
-    private[this] val server = new scala.ref.WeakReference(_server)
+    private[this] val server: scala.ref.WeakReference[HttpServer] = new scala.ref.WeakReference(_server)
     
     override def run: Unit = try {
       server.get.foreach{ server: HttpServer => Await.result(server.shutdown(), Duration.Inf) }
@@ -57,7 +57,12 @@ object HttpServer {
   }
 }
 
-final case class HttpServer (port: Int = 8080, router: RequestRouter, authKey: String, serverOptions: HttpServerOptions = HttpServerOptions.default) extends Logging {
+final case class HttpServer (
+  port: Int = 8080,
+  router: RequestRouter,
+  authKey: String,
+  serverOptions: HttpServerOptions = HttpServerOptions.default
+) extends Logging {
   private[this] val name: String = s"WebServer on Port $port"
   private[this] val shutdownHookThread: Thread = new HttpServer.ShutdownHookThread(name, this)
   private[this] val controlHandler = ControlHandler(this, authKey)
@@ -66,8 +71,13 @@ final case class HttpServer (port: Int = 8080, router: RequestRouter, authKey: S
   def enablePing():  Unit = controlHandler.enabled = true
   def disablePing(): Unit = controlHandler.enabled = false
   
-  private[this] val bossGroup: EventLoopGroup = NativeHelpers.makeEventLoopGroup(0, new HttpServer.ThreadFactory("fm-http-server-boss", daemon = false))
-  private[this] val workerGroup: EventLoopGroup = NativeHelpers.makeEventLoopGroup(0, new HttpServer.ThreadFactory("fm-http-server-worker", daemon = false))
+  private[this] val bossGroup: EventLoopGroup = {
+    NativeHelpers.makeServerEventLoopGroup(0, new HttpServer.ThreadFactory("fm-http-server-boss", daemon = false))
+  }
+
+  private[this] val workerGroup: EventLoopGroup = {
+    NativeHelpers.makeServerEventLoopGroup(0, new HttpServer.ThreadFactory("fm-http-server-worker", daemon = false))
+  }
   
   /** A flag to indicate that we've already called the shutdown() method to avoid calling it twice */
   private[this] val isShuttingDown: AtomicBoolean = new AtomicBoolean(false)

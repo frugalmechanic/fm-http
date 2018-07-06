@@ -25,6 +25,7 @@ import io.netty.handler.codec.http._
 import io.netty.handler.stream.{ChunkedFile, ChunkedStream}
 import io.netty.util.{AttributeKey, CharsetUtil}
 import java.io.{File, FileNotFoundException, InputStream, RandomAccessFile}
+import java.util.concurrent.atomic.AtomicLong
 import java.util.Date
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
@@ -36,7 +37,7 @@ object NettyHttpServerPipelineHandler {
   /**
    * A unique id for each connection (for debugging)
    */
-  private val ID = new java.util.concurrent.atomic.AtomicLong
+  private val ID: AtomicLong = new AtomicLong()
   
   /**
    * For marking if a channel is currently processing a request

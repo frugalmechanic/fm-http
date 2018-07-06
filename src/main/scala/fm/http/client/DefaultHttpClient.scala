@@ -46,7 +46,9 @@ object DefaultHttpClient extends Logging {
 //    workerGroup.shutdownGracefully(1, 15, TimeUnit.SECONDS)
 //  }
   
-  private val workerGroup: EventLoopGroup = NativeHelpers.makeEventLoopGroup(0, new ThreadFactory("fm-http-client-worker", daemon = true))
+  private val workerGroup: EventLoopGroup = {
+    NativeHelpers.makeClientEventLoopGroup(0, new ThreadFactory("fm-http-client-worker", daemon = true))
+  }
     
   /**
    * Simple ThreadFactory that allows us to name the threads something reasonable and set the daemon flag
