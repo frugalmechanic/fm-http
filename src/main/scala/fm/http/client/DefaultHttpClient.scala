@@ -23,12 +23,14 @@ import io.netty.channel._
 import io.netty.channel.group.{ChannelGroup, DefaultChannelGroup}
 import io.netty.channel.socket.SocketChannel
 import io.netty.handler.codec.http.{HttpClientCodec, HttpMethod}
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory
 import io.netty.handler.ssl.{SslContext, SslContextBuilder}
 import io.netty.util.concurrent.GlobalEventExecutor
 import java.util.concurrent.{ConcurrentHashMap, TimeoutException}
 import java.nio.charset.Charset
 import java.lang.ref.WeakReference
 import java.net.MalformedURLException
+import javax.net.ssl.TrustManagerFactory
 import scala.concurrent.{Future, Promise}
 import scala.concurrent.duration._
 import scala.util.{Failure, Success}
@@ -142,7 +144,8 @@ final case class DefaultHttpClient(
   defaultConnectTimeout: Duration, // The maximum time to wait to connect to a server
   defaultCharset: Charset, // The default charset to use (if none is specified in the response) when converting responses to strings
   followRedirects: Boolean, // Should 301/302 redirects be followed for GET or HEAD requests?
-  maxRedirectCount: Int // The maximum number of 301/302 redirects to follow for a GET or HEAD request
+  maxRedirectCount: Int, // The maximum number of 301/302 redirects to follow for a GET or HEAD request
+  disableSSLCertVerification: Boolean // Do not verify SSL certs (SHOULD NOT USE IN PRODUCTION)
 ) extends HttpClient with Logging {
   import DefaultHttpClient.{EndPoint, TimeoutTask, workerGroup}
   
@@ -335,7 +338,13 @@ final case class DefaultHttpClient(
   // We create Bootstrap instances for HTTPS on the fly since they include the host/port
   private[this] def httpsBootstrap(host: String, port: Int): Bootstrap = makeBootstrap(true, host, port)
   
-  private[this] val sslCtx: SslContext = SslContextBuilder.forClient().build()
+  private[this] val sslCtx: SslContext = {
+    val trustManager: TrustManagerFactory =
+      if (disableSSLCertVerification) InsecureTrustManagerFactory.INSTANCE
+      else null // null means to use system default
+
+    SslContextBuilder.forClient().trustManager(trustManager).build()
+  }
   
   private def makeBootstrap(ssl: Boolean, host: String, port: Int): Bootstrap = {
     val b: Bootstrap = new Bootstrap()
