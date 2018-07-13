@@ -21,7 +21,6 @@ import java.net.SocketAddress
 import io.netty.channel._
 import io.netty.channel.group.ChannelGroup
 import io.netty.handler.codec.http._
-import io.netty.handler.codec.socks._
 import io.netty.util.ReferenceCountUtil
 
 import scala.concurrent.{ExecutionContext, Future, Promise}
@@ -44,10 +43,6 @@ object NettyHttpClientPipelineHandler {
   }
   
   final case class URIRequestAndPromise(uri: String, request: Request, promise: Promise[AsyncResponse])
-  
-  final case class SOCKSInit(msg: SocksInitRequest, promise: Promise[SocksInitResponse])
-  final case class SOCKSAuth(msg: SocksAuthRequest, promise: Promise[SocksAuthResponse])
-  final case class SOCKSConnect(msg: SocksCmdRequest, promise: Promise[SocksCmdResponse])
 }
 
 final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, executionContext: ExecutionContext) extends ChannelInboundHandlerAdapter with ChannelOutboundHandler with Logging {
@@ -57,11 +52,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   private[this] implicit val executionCtx: ExecutionContext = executionContext
   
   @volatile private var pool: ChannelPool = null
-  
-  private[this] var socksInitPromise: Promise[SocksInitResponse] = null
-  private[this] var socksAuthPromise: Promise[SocksAuthResponse] = null
-  private[this] var socksConnectPromise: Promise[SocksCmdResponse] = null
-  
+
   private[this] var responsePromise: Promise[AsyncResponse] = null
   private[this] var contentBuilder: LinkedHttpContentBuilder = null
   
@@ -116,21 +107,6 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   }
   
   protected def channelReadImpl(obj: AnyRef)(implicit ctx: ChannelHandlerContext): Unit = obj match {
-    case response: SocksInitResponse =>
-      require(null ne socksInitPromise, "Received a SocksInitResponse but the socksInitPromise is null!")
-      socksInitPromise.trySuccess(response)
-      socksInitPromise = null
-      
-    case response: SocksAuthResponse =>
-      require(null ne socksAuthPromise, "Received a SocksAuthResponse but the socksAuthPromise is null!")
-      socksAuthPromise.trySuccess(response)
-      socksAuthPromise = null
-      
-    case response: SocksCmdResponse =>
-      require(null ne socksConnectPromise, "Received a SocksCmdResponse but the socksConnectPromise is null!")
-      socksConnectPromise.trySuccess(response)
-      socksConnectPromise = null
-    
     case response: HttpResponse =>      
       require(null eq contentBuilder, "Received an HttpResponse before the previous contentBuilder was completed!")     
       require(null ne responsePromise, "No promise to receive the HttpResponse")
@@ -196,40 +172,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
     // Allow the HttpResponse message to be read
     ctx.read()
   }
-  
-  def writeSocksInit(cmd: SocksInitRequest, socksPromise: Promise[SocksInitResponse], channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {
-    trace("writeSocksInit")
-    writeSocksRequest(cmd, socksPromise, channelPromise)(p => socksInitPromise = p)
-  }
-  
-  def writeSocksAuth(cmd: SocksAuthRequest, socksPromise: Promise[SocksAuthResponse], channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {
-    trace("writeSocksAuth")
-    writeSocksRequest(cmd, socksPromise, channelPromise)(p => socksAuthPromise = p)
-  }
-  
-  def writeSocksConnect(cmd: SocksCmdRequest, socksPromise: Promise[SocksCmdResponse], channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {
-    trace("writeSocksConnect")
-    writeSocksRequest(cmd, socksPromise, channelPromise)(p => socksConnectPromise = p)
-  }
-  
-  private def writeSocksRequest[T <: SocksMessage, P](msg: SocksMessage, socksPromise: Promise[P], channelPromise: ChannelPromise)(setSocksPromise: Promise[P] => Unit)(implicit ctx: ChannelHandlerContext): Unit = {
-    require(socksInitPromise eq null, "Expected socksInitPromise to be null")
-    require(socksAuthPromise eq null, "Expected socksAuthPromise to be null")
-    require(socksConnectPromise eq null, "Expected socksConnectPromise to be null")
-    require(responsePromise eq null, "Expected responsePromise to be null")
-    require(contentBuilder eq null, "Expected contentBuilder to be null")
-    
-    setSocksPromise(socksPromise)
-    
-    ctx.writeAndFlush(msg).onComplete{
-      case Success(_) => channelPromise.setSuccess()
-      case Failure(ex) => fail(socksPromise, ex, channelPromise)
-    }
-    
-    // Allow the response to be read
-    ctx.read()
-  }
-  
+
   /**
    * Set common headers for both Full & Async responses
    */
@@ -344,17 +287,11 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   
   def write(ctx: ChannelHandlerContext, obj: AnyRef, channelPromise: ChannelPromise): Unit = obj match {
     case URIRequestAndPromise(uri, request, promise) => writeRequest(uri, request, promise, channelPromise)(ctx)
-    case SOCKSInit(msg, socksPromise) => writeSocksInit(msg, socksPromise, channelPromise)(ctx)
-    case SOCKSAuth(msg, socksPromise) => writeSocksAuth(msg, socksPromise, channelPromise)(ctx)
-    case SOCKSConnect(msg, socksPromise) => writeSocksConnect(msg, socksPromise, channelPromise)(ctx)
     case _ => throw new Exception("Invalid obj: "+obj)
   }
   
   def failPromises(cause: Throwable)(implicit ctx: ChannelHandlerContext): Unit = {
-    trace(s"failPromises(socksInitPromise: $socksInitPromise, socksAuthPromise: $socksAuthPromise, socksConnectPromise: $socksConnectPromise, responsePromise: $responsePromise, contentBuilder: $contentBuilder)", cause)
-    if (null != socksInitPromise) socksInitPromise.tryFailure(cause)
-    if (null != socksAuthPromise) socksAuthPromise.tryFailure(cause)
-    if (null != socksConnectPromise) socksConnectPromise.tryFailure(cause)
+    trace(s"failPromises(responsePromise: $responsePromise, contentBuilder: $contentBuilder)", cause)
     if (null != responsePromise) responsePromise.tryFailure(cause)
     if (null != contentBuilder) contentBuilder += cause
   }

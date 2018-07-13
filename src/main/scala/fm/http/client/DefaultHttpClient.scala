@@ -16,24 +16,22 @@
 package fm.http.client
 
 import fm.common.Implicits._
-import fm.common.{IP, Logging, URI, URL}
+import fm.common.{Logging, URI, URL}
 import fm.http._
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel._
 import io.netty.channel.group.{ChannelGroup, DefaultChannelGroup}
 import io.netty.channel.socket.SocketChannel
 import io.netty.handler.codec.http.{HttpClientCodec, HttpMethod}
-import io.netty.handler.codec.socks._
 import io.netty.handler.ssl.{SslContext, SslContextBuilder}
 import io.netty.util.concurrent.GlobalEventExecutor
 import java.util.concurrent.{ConcurrentHashMap, TimeoutException}
-import java.io.IOException
 import java.nio.charset.Charset
 import java.lang.ref.WeakReference
 import java.net.MalformedURLException
 import scala.concurrent.{Future, Promise}
 import scala.concurrent.duration._
-import scala.util.{Failure, Success, Try}
+import scala.util.{Failure, Success}
 
 
 /**
@@ -62,11 +60,11 @@ object DefaultHttpClient extends Logging {
     }
   }
    
-  private case class EndPoint(host: String, port: Int, ssl: Boolean, socksProxy: Option[(String, Int)]) {
+  private case class EndPoint(host: String, port: Int, ssl: Boolean, proxy: Option[ProxyOptions]) {
     def prettyString: String = {
       val scheme: String = if (ssl) "https" else "http"
-      val proxy: String = socksProxy.map{ case (host,port) => s" via $host:$port" }.getOrElse("")
-      s"${scheme}://$host:$port$proxy"
+      val proxyStr: String = proxy.map{ p: ProxyOptions => s" via ${p.host}:${p.port}" }.getOrElse("")
+      s"${scheme}://$host:$port$proxyStr"
     }
   }
   
@@ -133,7 +131,7 @@ object DefaultHttpClient extends Logging {
 }
 
 final case class DefaultHttpClient(
-  socksProxy: Option[(String, Int)] = None,
+  proxy: Option[ProxyOptions] = None,
   defaultMaxLength: Long,
   defaultHeaders: Headers,
   useConnectionPool: Boolean,  // Should we re-use connections? (Use HTTP Keep Alive?)
@@ -209,8 +207,8 @@ final case class DefaultHttpClient(
   /**
    * Get a channel either from a pool (if useConnectionPool is true) or created directly
    */
-  private def getChannel(host: String, port: Int, ssl: Boolean, socksProxy: Option[(String, Int)]): Future[Channel] = {    
-    val endPoint: EndPoint = EndPoint(host, port, ssl, socksProxy)
+  private def getChannel(host: String, port: Int, ssl: Boolean, proxy: Option[ProxyOptions]): Future[Channel] = {
+    val endPoint: EndPoint = EndPoint(host, port, ssl, proxy)
     
     if (useConnectionPool) endpointMap.synchronized {
       val poolRef: WeakReference[ChannelPool] = endpointMap.get(endPoint)
@@ -261,7 +259,7 @@ final case class DefaultHttpClient(
     
     val timeoutTask: TimeoutTask[_] = if (timeout.isFinite()) DefaultHttpClient.enableTimeoutTask(promise, timeout) else null
     
-    getChannel(host, port, ssl, socksProxy).onComplete {
+    getChannel(host, port, ssl, proxy).onComplete {
       case Success(ch) =>
         if (logger.isTraceEnabled) logger.trace("Success for getChannel() => "+ch+"  URI: "+uri)
         
@@ -297,18 +295,14 @@ final case class DefaultHttpClient(
     promise.future
   }
   
-  private def makeNewChannel(p: EndPoint)(pool: ChannelPool): Future[Channel] = makeNewChannel(p.host, p.port, p.ssl, p.socksProxy)(pool)
+  private def makeNewChannel(p: EndPoint)(pool: ChannelPool): Future[Channel] = makeNewChannel(p.host, p.port, p.ssl, p.proxy)(pool)
   
-  private def makeNewChannel(host: String, port: Int, ssl: Boolean, socksProxy: Option[(String, Int)])(pool: ChannelPool): Future[Channel] = {
+  private def makeNewChannel(host: String, port: Int, ssl: Boolean, proxy: Option[ProxyOptions])(pool: ChannelPool): Future[Channel] = {
     val promise: Promise[Channel] = Promise()
     
     val bootstrap: Bootstrap = if (ssl) httpsBootstrap(host, port) else httpBootstrap
-    
-    // TODO: need to test SSL when using a SOCKS Proxy.  Pretty sure it does not currently work.
-    val connectFuture: ChannelFuture = socksProxy match {
-      case Some((socksHost, socksPort)) => bootstrap.connect(socksHost, socksPort)
-      case None                         => bootstrap.connect(host, port)
-    }
+
+    val connectFuture: ChannelFuture = bootstrap.connect(host, port)
     
     val ch: Channel = connectFuture.channel()
     
@@ -319,57 +313,10 @@ final case class DefaultHttpClient(
       // If the connect promise fails (e.g. we timeout) then make sure we close the channel
       case Failure(ex) => ch.close()
     }
-    
-    if (socksProxy.isDefined) {
-      import NettyHttpClientPipelineHandler.{SOCKSInit, SOCKSConnect}
-      import scala.collection.JavaConverters._
-      
-      
-      val socksInitPromise: Promise[SocksInitResponse] = Promise()
-      //val socksAuthPromise: Promise[SocksAuthResponse] = Promise()
-      val socksConnectPromise: Promise[SocksCmdResponse] = Promise()   
 
-      val addrType: SocksAddressType = if (IP.isValid(host)) SocksAddressType.IPv4 else SocksAddressType.DOMAIN
-      
-      // Once connected we need to tell the Socks Proxy who we want to connect to
-      connectFuture.onComplete{
-        case Failure(ex) => socksConnectPromise.tryFailure(ex)
-        case Success(_) =>
-          ch.pipeline().addFirst("socks_encoder", new SocksMessageEncoder)
-          ch.pipeline().addFirst("socks_decoder", new SocksInitResponseDecoder)
-          
-          ch.writeAndFlush(SOCKSInit(new SocksInitRequest(List(SocksAuthScheme.NO_AUTH).asJava), socksInitPromise))
-          
-          socksInitPromise.future.onComplete {
-            case Failure(ex) => socksConnectPromise.tryFailure(ex)
-            case Success(initResponse) =>
-              if (initResponse.authScheme != SocksAuthScheme.NO_AUTH) socksConnectPromise.tryFailure(new IOException("Invalid AUTH_SCHEME: "+initResponse.authScheme)) else {
-                ch.pipeline().addFirst("socks_decoder", new SocksCmdResponseDecoder)
-                ch.writeAndFlush(SOCKSConnect(new SocksCmdRequest(SocksCmdType.CONNECT, addrType, host, port), socksConnectPromise))
-              }
-          }
-      }
-
-      socksConnectPromise.future.onComplete{
-        case Success(cmdResponse) => 
-          ch.pipeline().remove("socks_encoder")
-          Try{ ch.pipeline().remove("socks_decoder") }
-          
-          if (cmdResponse.cmdStatus() === SocksCmdStatus.SUCCESS) {
-            if (!promise.trySuccess(ch)) ch.close()             
-          } else {
-            promise.tryFailure(new Exception("SOCKS Proxy Failure: "+cmdResponse.cmdStatus.name))
-            ch.close()
-          }
-          
-        case Failure(ex) => promise.tryFailure(ex)
-      }
-      
-    } else {
-      connectFuture.onComplete {
-        case Success(_) => if (!promise.trySuccess(ch)) ch.close()
-        case Failure(ex) => promise.tryFailure(ex)
-      }
+    connectFuture.onComplete {
+      case Success(_) => if (!promise.trySuccess(ch)) ch.close()
+      case Failure(ex) => promise.tryFailure(ex)
     }
     
     if (null != pool) promise.future.map{ ch: Channel =>
@@ -398,6 +345,9 @@ final case class DefaultHttpClient(
     b.handler(new ChannelInitializer[SocketChannel] {
        def initChannel(ch: SocketChannel): Unit = {
          val p: ChannelPipeline = ch.pipeline()
+
+         // If we are using a proxy then make sure that gets added first
+         proxy.foreach{ options: ProxyOptions => p.addFirst(options.makeChannelHandler) }
 
          if (ssl) {
            p.addLast("ssl", sslCtx.newHandler(ch.alloc(), host, port))

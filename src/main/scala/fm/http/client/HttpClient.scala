@@ -38,7 +38,7 @@ object HttpClient {
   implicit val timer: ScheduledTaskRunner = HttpExecutionContext.timer
   
   def apply(
-    socksProxy: Option[(String, Int)] = None,
+    proxy: Option[ProxyOptions] = None,
     defaultMaxLength: Long = 104857600, /* 100MB (which may or may not be 100MB worth of Chars) */
     defaultHeaders: Headers = DefaultHeaders,
     useConnectionPool: Boolean = true,   // Should we re-use connections? (Use HTTP Keep Alive?)
@@ -51,7 +51,7 @@ object HttpClient {
     followRedirects: Boolean = true, // Should 301/302 redirects be followed for GET or HEAD requests?
     maxRedirectCount: Int = 5  // The maximum number of 301/302 redirects to follow for a GET or HEAD request if followRedirects is true
   ): DefaultHttpClient = DefaultHttpClient(
-    socksProxy = socksProxy,
+    proxy = proxy,
     defaultMaxLength = defaultMaxLength,
     defaultHeaders = defaultHeaders,
     useConnectionPool = useConnectionPool,
