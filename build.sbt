@@ -4,9 +4,9 @@ name := "fm-http"
 
 description := "Async Http Client & Server for Scala"
 
-scalaVersion := "2.12.6"
+scalaVersion := "2.12.7"
 
-crossScalaVersions := Seq("2.11.11", "2.12.6")
+crossScalaVersions := Seq("2.11.11", "2.12.7")
 
 val fatalWarnings = Seq(
   // Enable -Xlint, but disable the default 'unused' so we can manually specify below
@@ -39,11 +39,11 @@ fork in Test := true
 
 libraryDependencies ++= Seq(
   "com.frugalmechanic" %% "scala-optparse" % "1.1.2",
-  "com.frugalmechanic" %% "fm-common" % "0.23.0",
-  "com.frugalmechanic" %% "fm-lazyseq" % "0.9.0" % "test"
+  "com.frugalmechanic" %% "fm-common" % "0.26.0",
+  "com.frugalmechanic" %% "fm-lazyseq" % "0.10.0" % "test"
 )
 
-val nettyVersion: String = "4.1.27.Final"
+val nettyVersion: String = "4.1.30.Final"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-all" % nettyVersion,
