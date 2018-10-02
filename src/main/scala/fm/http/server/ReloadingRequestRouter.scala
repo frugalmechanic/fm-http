@@ -23,7 +23,7 @@ final case class ReloadingRequestRouter(
   @volatile private[this] var _router: RequestRouter = newRequestRouter()
   
   /** Create a new RequestRouter */
-  private def newRequestRouter(): RequestRouter = reloadingClassLoader.loadClass(className).newInstance().asInstanceOf[RequestRouter]
+  private def newRequestRouter(): RequestRouter = reloadingClassLoader.loadClass(className).getDeclaredConstructor().newInstance().asInstanceOf[RequestRouter]
   
   /** Get the current RequestRouter */
   private def router: RequestRouter = synchronized {
