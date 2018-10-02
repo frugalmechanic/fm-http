@@ -203,7 +203,7 @@ final case class SingleHandlerRequestRouter(handler: RequestHandler) extends Req
  *  )
  */
 final case class VirtualHostRequestRouter(map: Map[String, RequestRouter]) extends RequestRouter {
-  require(map.keys.forall{ _.isNotBlank }, "Found a blank entry in the virtual host map: "+map)
+  require(map.keys.forall{ _.isNotNullOrBlank }, "Found a blank entry in the virtual host map: "+map)
   
   def lookup(request: Request): Option[RequestHandler] = {
     val host: String = request.host.getOrElse("")
@@ -220,7 +220,7 @@ final case class VirtualHostRequestRouter(map: Map[String, RequestRouter]) exten
   
   @scala.annotation.tailrec
   private def lookupWildCards(host: String): Option[RequestRouter] = {
-    if (host.isBlank) return map.get("*")
+    if (host.isNullOrBlank) return map.get("*")
     
     val res: Option[RequestRouter] = map.get("*."+host)
     if (res.isDefined) return res

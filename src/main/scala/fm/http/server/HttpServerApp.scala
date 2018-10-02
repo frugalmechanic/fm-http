@@ -277,8 +277,8 @@ abstract class HttpServerApp extends Logging {
 
     assert(null != emailAppender, "Email Appender is null!")
     if (null != emailAppender) {
-      if (EmailUser.isNotBlank) emailAppender.setUsername(EmailUser)
-      if (EmailPass.isNotBlank) emailAppender.setPassword(EmailPass)
+      if (EmailUser.isNotNullOrBlank) emailAppender.setUsername(EmailUser)
+      if (EmailPass.isNotNullOrBlank) emailAppender.setPassword(EmailPass)
       emailAppender.start() // start() has to be called for it to pick up the new username/password
       rootLogger.addAppender(emailAppender)
     }

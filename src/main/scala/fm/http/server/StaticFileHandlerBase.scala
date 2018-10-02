@@ -141,7 +141,7 @@ trait StaticFileHandlerBase extends RequestRouter {
    * Checks each root (in order) attempting to resolve the path to a ResolvedFile
    */
   private def findResolvedFile(path: String, uri: String): Option[ResolvedFile] = {
-    if (path.isBlank) return None
+    if (path.isNullOrBlank) return None
     
     val parts: Array[String] = path.split('/')
     

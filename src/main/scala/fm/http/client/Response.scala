@@ -65,7 +65,7 @@ sealed abstract class Response(response: HttpResponse) extends Closeable {
 
   private def charsetIsSupported(charset: String): Boolean = {
     // Charset.isSupported will throw an IllegalArgumentException charset is null.  This explicitly handles that case.
-    if (charset.isBlank) return false
+    if (charset.isNullOrBlank) return false
 
     try {
       // Note: This will throw IllegalCharsetNameException for stuff like "\"UTF-8\"" or "-UTF-8" which we

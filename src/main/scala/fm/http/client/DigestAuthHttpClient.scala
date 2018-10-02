@@ -16,7 +16,7 @@ final class DigestAuthHttpClient(user: String, pass: String, val client: HttpCli
   private[this] var nc: Int = 0
   
   protected def makeAuthorization(request: Request): Option[String] = synchronized {
-    if (realm.isBlank || nonce.isBlank || opaque.isBlank) return None
+    if (realm.isNullOrBlank || nonce.isNullOrBlank || opaque.isNullOrBlank) return None
     
     nc += 1
     val ncHex: String = nc.toHexString.lPad(8,'0') // e.g. 00000001
@@ -26,7 +26,7 @@ final class DigestAuthHttpClient(user: String, pass: String, val client: HttpCli
     var ha1: String = DigestUtils.md5Hex(s"$user:$realm:$pass")
     
     // Only look at the algorithm if the qop is non-blank
-    if (qop.isNotBlank) algorithm match {
+    if (qop.isNotNullOrBlank) algorithm match {
       case null | "MD5" => // ha1 is used as-is
       case "MD5-sess"   => ha1 = DigestUtils.md5Hex(s"$ha1:$nonce:$cnonce")
       case _            => return None // Not sure how to authenticate
@@ -53,7 +53,7 @@ final class DigestAuthHttpClient(user: String, pass: String, val client: HttpCli
     params += "opaque" -> opaque
     params += "response" -> response
     
-    if (qop.isNotBlank) {
+    if (qop.isNotNullOrBlank) {
       params += "qop" -> qop
       params += "cnonce" -> cnonce
       params += "nc" -> ncHex

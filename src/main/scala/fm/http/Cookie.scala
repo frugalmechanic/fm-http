@@ -25,7 +25,7 @@ object Cookie {
   /**
    * Decodes a Cookie Header into a Set of Cookies
    */
-  def parseCookieHeader(s: String): Vector[Cookie] = if (s.isBlank) Vector.empty else NettyServerCookieDecoder.LAX.decode(s).asScala.map{ apply }.toVector
+  def parseCookieHeader(s: String): Vector[Cookie] = if (s.isNullOrBlank) Vector.empty else NettyServerCookieDecoder.LAX.decode(s).asScala.map{ apply }.toVector
 
   /**
    * Exception-Safe version of apply
@@ -35,7 +35,7 @@ object Cookie {
   /**
    * Decodes a Set-Cookie Header into a Set of Cookies
    */
-  def parseSetCookieHeader(s: String): Option[Cookie] = if (s.isBlank) None else Some(apply(NettyClientCookieDecoder.LAX.decode(s)))
+  def parseSetCookieHeader(s: String): Option[Cookie] = if (s.isNullOrBlank) None else Some(apply(NettyClientCookieDecoder.LAX.decode(s)))
 
   /**
    * Exception-Safe version of apply

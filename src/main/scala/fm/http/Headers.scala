@@ -63,13 +63,13 @@ object Headers {
   }
 
 //  private[http] def parseZonedDateTime(s: String): Option[ZonedDateTime] = {
-//    if (s.isBlank) return None
+//    if (s.isNullOrBlank) return None
 //    val cleaned: String = if(s.contains(";")) s.substring(0, s.indexOf(";")) else s
 //    Try{ ZonedDateTime.parse(cleaned, DateTimeFormatter.RFC_1123_DATE_TIME) }.toOption
 //  }
 
   private[http] def parseImmutableDate(s: String): Option[ImmutableDate] = {
-    if (s.isBlank) return None
+    if (s.isNullOrBlank) return None
     val cleaned: String = if(s.contains(";")) s.substring(0, s.indexOf(";")) else s
     Try{ ZonedDateTime.parse(cleaned, DateTimeFormatter.RFC_1123_DATE_TIME) }.toOption.map{ _.toInstant }.map{ ImmutableDate(_) }
   }
