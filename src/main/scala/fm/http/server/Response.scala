@@ -163,6 +163,16 @@ object Response {
     headers.contentDispositionAttachmentFileName = saveAsName
     RandomAccessFileResponse(Status.OK, headers, raf)
   }
+
+  def saveAs(buf: ByteBuf, saveAsName: String): Response = saveAs(buf, saveAsName, MimeTypes.forPath(saveAsName).getOrElse{ MimeTypes.BINARY })
+
+  def saveAs(buf: ByteBuf, saveAsName: String, contentType: String): Response = {
+    val headers: MutableHeaders = MutableHeaders()
+    headers.contentType = contentType
+    headers.contentDispositionAttachmentFileName = saveAsName
+    Ok(headers, buf)
+  }
+
 }
 
 sealed trait Response extends Message {
