@@ -64,32 +64,76 @@ sealed trait Request {
 /**
  * This represents a full HTTP Request (both headers and complete body)
  */
-final case class FullRequest(method: HttpMethod, url: URL, headers: Headers = Headers.empty, buf: ByteBuf = Unpooled.EMPTY_BUFFER) extends Request with FullMessage {
-  def toFullHttpRequest(version: HttpVersion, uri: String): FullHttpRequest = {
+object FullRequest {
+  def apply(method: HttpMethod, url: URL): FullRequest = apply(method, url, Headers.empty)
+  def apply(method: HttpMethod, url: URL, headers: Headers): FullRequest = apply(method, url, headers, Unpooled.EMPTY_BUFFER)
+  def apply(method: HttpMethod, url: URL, headers: Headers, buf: ByteBuf): FullRequest = Impl(method, url, headers, buf)
+
+  private case class Impl(method: HttpMethod, url: URL, headers: Headers, buf: ByteBuf) extends FullRequest {
+    def withHeaders(newHeaders: Headers): FullRequest = copy(headers = newHeaders)
+  }
+}
+
+trait FullRequest extends Request with FullMessage {
+  def method: HttpMethod
+  def url: URL
+  def headers: Headers
+  def buf: ByteBuf
+
+  final def toFullHttpRequest(version: HttpVersion, uri: String): FullHttpRequest = {
     initHeaders(new DefaultFullHttpRequest(version, method, uri, buf))
   }
-  
-  def withHeaders(newHeaders: Headers): FullRequest = copy(headers = newHeaders)
+
+  def withHeaders(newHeaders: Headers): FullRequest
+}
+
+object AsyncRequest {
+  def apply(method: HttpMethod, url: URL): AsyncRequest = apply(method, url, Headers.empty)
+  def apply(method: HttpMethod, url: URL, headers: Headers): AsyncRequest = apply(method, url, headers, Future.successful(None))
+  def apply(method: HttpMethod, url: URL, headers: Headers, head: Future[Option[LinkedHttpContent]]): AsyncRequest = Impl(method, url, headers, head)
+
+  private case class Impl(method: HttpMethod, url: URL, headers: Headers, head: Future[Option[LinkedHttpContent]]) extends AsyncRequest {
+    def withHeaders(newHeaders: Headers): AsyncRequest = copy(headers = newHeaders)
+  }
 }
 
 /**
  * This represents a chunked HTTP Request with headers and the first chunk along with a pointer to the next chunk
  */
-final case class AsyncRequest(method: HttpMethod, url: URL, headers: Headers, head: Future[Option[LinkedHttpContent]]) extends Request with AsyncMessage {
-  def toHttpRequest(version: HttpVersion, uri: String): HttpRequest = {
+trait AsyncRequest extends Request with AsyncMessage {
+  def method: HttpMethod
+  def url: URL
+  def headers: Headers
+  def head: Future[Option[LinkedHttpContent]]
+
+  final def toHttpRequest(version: HttpVersion, uri: String): HttpRequest = {
     initHeaders(new DefaultHttpRequest(version, method, uri))
   }
-  
-  def withHeaders(newHeaders: Headers): AsyncRequest = copy(headers = newHeaders)
+
+  def withHeaders(newHeaders: Headers): AsyncRequest
 }
 
 /**
  * This represents a File that we want to send as the request body
  */
-final case class FileRequest(method: HttpMethod, url: URL, headers: Headers, file: File) extends Request with FileMessage {
-  def toHttpRequest(version: HttpVersion, uri: String): HttpRequest = {
+object FileRequest {
+  def apply(method: HttpMethod, url: URL, file: File): FileRequest = apply(method, url, Headers.empty, file)
+  def apply(method: HttpMethod, url: URL, headers: Headers, head: File): FileRequest = Impl(method, url, headers, head)
+
+  private case class Impl(method: HttpMethod, url: URL, headers: Headers, file: File) extends FileRequest {
+    def withHeaders(newHeaders: Headers): FileRequest = copy(headers = newHeaders)
+  }
+}
+
+trait FileRequest extends Request with FileMessage {
+  def method: HttpMethod
+  def url: URL
+  def headers: Headers
+  def file: File
+
+  final def toHttpRequest(version: HttpVersion, uri: String): HttpRequest = {
     initHeaders(new DefaultHttpRequest(version, method, uri))
   }
-  
-  def withHeaders(newHeaders: Headers): FileRequest = copy(headers = newHeaders)
+
+  def withHeaders(newHeaders: Headers): FileRequest
 }

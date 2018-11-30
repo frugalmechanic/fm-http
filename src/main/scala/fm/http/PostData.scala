@@ -49,7 +49,9 @@ sealed trait PostData {
   final def length: Long = self.length()
   
   /** The InputStreamResource for reading this data */
-  def inputStreamResource(autoDecompress: Boolean = true, autoBuffer: Boolean = true): InputStreamResource
+  final def inputStreamResource(): InputStreamResource = inputStreamResource(true, true)
+  final def inputStreamResource(autoDecompress: Boolean): InputStreamResource = inputStreamResource(autoDecompress, true)
+  def inputStreamResource(autoDecompress: Boolean, autoBuffer: Boolean): InputStreamResource
 
   final def value: String = self.getString()
   
@@ -60,7 +62,7 @@ sealed trait PostData {
 sealed trait MemoryPostData extends PostData {
   protected final def resource: Resource[InputStream] = MultiUseResource{ new ByteBufInputStream(self.getByteBuf) }
   
-  final def inputStreamResource(autoDecompress: Boolean = true, autoBuffer: Boolean = true): InputStreamResource = InputStreamResource(resource, autoDecompress = autoDecompress, autoBuffer = autoBuffer)
+  final def inputStreamResource(autoDecompress: Boolean, autoBuffer: Boolean): InputStreamResource = InputStreamResource(resource, autoDecompress = autoDecompress, autoBuffer = autoBuffer)
 }
 
 sealed trait DiskPostData extends PostData {  
@@ -86,7 +88,7 @@ final case class MemoryPostAttribute(protected val self: netty.Attribute) extend
 final case class DiskPostAttribute(protected val self: netty.Attribute) extends PostAttribute with DiskPostData {
   require(!self.isInMemory, "Can't use an isInMemory=true instance of DiskAttribute with DiskPostAttribute")
   
-  def inputStreamResource(autoDecompress: Boolean = true, autoBuffer: Boolean = true): InputStreamResource = {
+  def inputStreamResource(autoDecompress: Boolean, autoBuffer: Boolean): InputStreamResource = {
     InputStreamResource.forFile(file, autoDecompress = autoDecompress, autoBuffer = autoBuffer)
   }
 }
@@ -98,7 +100,7 @@ final case class MemoryFileUpload(protected val self: netty.FileUpload) extends 
 final case class DiskFileUpload(protected val self: netty.FileUpload) extends FileUpload with DiskPostData {
   require(!self.isInMemory, "Can't use an isInMemory=true instance of FileUpload with DiskFileUpload")
   
-  def inputStreamResource(autoDecompress: Boolean = true, autoBuffer: Boolean = true): InputStreamResource = {
+  def inputStreamResource(autoDecompress: Boolean, autoBuffer: Boolean): InputStreamResource = {
     InputStreamResource.forFile(file, fileName.getOrElse(""), autoDecompress = autoDecompress, autoBuffer = autoBuffer)
   }
 }

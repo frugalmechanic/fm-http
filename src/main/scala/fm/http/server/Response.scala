@@ -176,19 +176,43 @@ sealed trait Response extends Message {
 /**
  * This represents a full HTTP Response (both headers and complete body)
  */
-final case class FullResponse(status: Status, headers: Headers = Headers.empty, buf: ByteBuf = Unpooled.EMPTY_BUFFER) extends Response with FullMessage {
-  def toFullHttpResponse(version: HttpVersion): FullHttpResponse = {
+object FullResponse {
+  def apply(status: Status): FullResponse = apply(status, Headers.empty)
+  def apply(status: Status, headers: Headers): FullResponse = apply(status, headers, Unpooled.EMPTY_BUFFER)
+  def apply(status: Status, headers: Headers, buf: ByteBuf): FullResponse = Impl(status, headers, buf)
+
+  private case class Impl(status: Status, headers: Headers, buf: ByteBuf) extends FullResponse
+}
+
+trait FullResponse extends Response with FullMessage {
+  def status: Status
+  def headers: Headers
+  def buf: ByteBuf
+
+  final def toFullHttpResponse(version: HttpVersion): FullHttpResponse = {
     val r = new DefaultFullHttpResponse(version, status.toHttpResponseStatus, buf)
     r.headers().add(headers.nettyHeaders)
     r
   }
 }
 
+object AsyncResponse {
+  def apply(status: Status): AsyncResponse = apply(status, Headers.empty)
+  def apply(status: Status, headers: Headers): AsyncResponse = apply(status, headers, Future.successful(None))
+  def apply(status: Status, headers: Headers, head: Future[Option[LinkedHttpContent]]): AsyncResponse = Impl(status, headers, head)
+
+  private case class Impl(status: Status, headers: Headers, head: Future[Option[LinkedHttpContent]]) extends AsyncResponse
+}
+
 /**
  * This represents a chunked HTTP Response with headers and the first chunk along with a pointer to the next chunk
  */
-final case class AsyncResponse(status: Status, headers: Headers, head: Future[Option[LinkedHttpContent]]) extends Response with AsyncMessage {
-  def toHttpResponse(version: HttpVersion): HttpResponse = {
+trait AsyncResponse extends Response with AsyncMessage {
+  def status: Status
+  def headers: Headers
+  def head: Future[Option[LinkedHttpContent]]
+
+  final def toHttpResponse(version: HttpVersion): HttpResponse = {
     val r = new DefaultHttpResponse(version, status.toHttpResponseStatus)
     r.headers().add(headers.nettyHeaders)
     r
@@ -198,8 +222,19 @@ final case class AsyncResponse(status: Status, headers: Headers, head: Future[Op
 /**
  * This represents a File that we want to send back to the user 
  */
-final case class FileResponse(status: Status, headers: Headers, file: File) extends Response with FileMessage {
-  def toHttpResponse(version: HttpVersion): HttpResponse = {
+object FileResponse {
+  def apply(status: Status, file: File): FileResponse = apply(status, Headers.empty, file)
+  def apply(status: Status, headers: Headers, file: File): FileResponse = Impl(status, headers, file)
+
+  private case class Impl(status: Status, headers: Headers, file: File) extends FileResponse
+}
+
+trait FileResponse extends Response with FileMessage {
+  def status: Status
+  def headers: Headers
+  def file: File
+
+  final def toHttpResponse(version: HttpVersion): HttpResponse = {
     val r = new DefaultHttpResponse(version, status.toHttpResponseStatus)
     r.headers().add(headers.nettyHeaders)
     r
@@ -209,19 +244,48 @@ final case class FileResponse(status: Status, headers: Headers, file: File) exte
 /**
  * This represents a RandomAccessFile that we want to send back to the user
  */
-final case class RandomAccessFileResponse(status: Status, headers: Headers, file: RandomAccessFile) extends Response {
-  def toHttpResponse(version: HttpVersion): HttpResponse = {
+
+object RandomAccessFileResponse {
+  def apply(status: Status, file: RandomAccessFile): RandomAccessFileResponse = apply(status, Headers.empty, file)
+  def apply(status: Status, file: RandomAccessFile, headers: Headers): RandomAccessFileResponse = apply(status, headers, file)
+  def apply(status: Status, headers: Headers, file: RandomAccessFile): RandomAccessFileResponse = Impl(status, headers, file)
+
+  private case class Impl(status: Status, headers: Headers, file: RandomAccessFile) extends RandomAccessFileResponse
+}
+
+trait RandomAccessFileResponse extends Response {
+  def status: Status
+  def headers: Headers
+  def file: RandomAccessFile
+
+  final def toHttpResponse(version: HttpVersion): HttpResponse = {
     val r = new DefaultHttpResponse(version, status.toHttpResponseStatus)
     r.headers().add(headers.nettyHeaders)
     r
   }
 }
 
+
 /**
  * This represents an InputStream that we want to send back to the user 
  */
-final case class InputStreamResponse(status: Status, headers: Headers, input: InputStream, length: Option[Long]) extends Response with InputStreamMessage {
-  def toHttpResponse(version: HttpVersion): HttpResponse = {
+
+object InputStreamResponse {
+  def apply(status: Status, input: InputStream): InputStreamResponse = apply(status, Headers.empty, input, None)
+  def apply(status: Status, input: InputStream, length: Option[Long]): InputStreamResponse = apply(status, Headers.empty, input, length)
+  def apply(status: Status, headers: Headers, input: InputStream): InputStreamResponse = apply(status, headers, input, None)
+  def apply(status: Status, headers: Headers, input: InputStream, length: Option[Long]): InputStreamResponse = Impl(status, headers, input, length)
+
+  private case class Impl(status: Status, headers: Headers, input: InputStream, length: Option[Long]) extends InputStreamResponse
+}
+
+trait InputStreamResponse extends Response with InputStreamMessage {
+  def status: Status
+  def headers: Headers
+  def input: InputStream
+  def length: Option[Long]
+
+  final def toHttpResponse(version: HttpVersion): HttpResponse = {
     val r = new DefaultHttpResponse(version, status.toHttpResponseStatus)
     r.headers().add(headers.nettyHeaders)
     r
