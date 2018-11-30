@@ -140,6 +140,7 @@ object Response {
   def plain(status: Status): Response = plain(status, Headers.empty)
   def plain(status: Status, headers: Headers): Response = plain(status, s"${status.code} ${status.msg}", headers)
   def plain(status: Status, headers: Headers, body: String): Response = plain(status, body, headers)
+  def plain(status: Status, body: String): Response = FullResponse(status, Headers.empty, Unpooled.copiedBuffer(body, CharsetUtil.UTF_8))
   def plain(status: Status, body: String, headers: Headers): Response = FullResponse(status, headers, Unpooled.copiedBuffer(body, CharsetUtil.UTF_8))
 
   //

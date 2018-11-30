@@ -82,7 +82,9 @@ trait FullRequest extends Request with FullMessage {
     initHeaders(new DefaultFullHttpRequest(version, method, uri, buf))
   }
 
-  def withHeaders(newHeaders: Headers): FullRequest
+  final def toHttpRequest(version: HttpVersion, uri: String): HttpRequest = {
+    initHeaders(new DefaultHttpRequest(version, method, uri))
+  }
 }
 
 /**

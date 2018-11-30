@@ -143,7 +143,8 @@ object DefaultHttpClient extends Logging {
     defaultCharset: Charset, // The default charset to use (if none is specified in the response) when converting responses to strings
     followRedirects: Boolean, // Should 301/302 redirects be followed for GET or HEAD requests?
     maxRedirectCount: Int, // The maximum number of 301/302 redirects to follow for a GET or HEAD request
-    disableSSLCertVerification: Boolean // Do not verify SSL certs (SHOULD NOT USE IN PRODUCTION)
+    disableSSLCertVerification: Boolean, // Do not verify SSL certs (SHOULD NOT USE IN PRODUCTION)
+    useExpect100Continue: Boolean,
   ): DefaultHttpClient = DefaultHttpClient(
     None,
     defaultMaxLength,
@@ -158,6 +159,7 @@ object DefaultHttpClient extends Logging {
     followRedirects,
     maxRedirectCount,
     disableSSLCertVerification,
+    useExpect100Continue,
   )
 }
 
@@ -174,7 +176,8 @@ final case class DefaultHttpClient(
   defaultCharset: Charset, // The default charset to use (if none is specified in the response) when converting responses to strings
   followRedirects: Boolean, // Should 301/302 redirects be followed for GET or HEAD requests?
   maxRedirectCount: Int, // The maximum number of 301/302 redirects to follow for a GET or HEAD request
-  disableSSLCertVerification: Boolean // Do not verify SSL certs (SHOULD NOT USE IN PRODUCTION)
+  disableSSLCertVerification: Boolean, // Do not verify SSL certs (SHOULD NOT USE IN PRODUCTION)
+  useExpect100Continue: Boolean, // Attempt to send an Expect: 100 Continue on requests with a Content-Length sent before sending the content
 ) extends HttpClient with Logging {
   import DefaultHttpClient.{EndPoint, TimeoutTask, workerGroup}
   
@@ -190,14 +193,20 @@ final case class DefaultHttpClient(
       executeWithRedirects(r, timeout, 0)
     } else {
       // Don't handle redirects
-      execute0(r.url, r, timeout)  
+      if (useExpect100Continue) executeWithExpectContinue(r, timeout)
+      else execute0(r.url, r, timeout, false)
     }
   }
   
   private def executeWithRedirects(r: Request, timeout: Duration, redirectCount: Int): Future[AsyncResponse] = {
     if (redirectCount > maxRedirectCount) return Future.failed{ new TooManyRedirectsException(s"Too many redirects ($redirectCount) for request $r") }
-    
-    execute0(r.url, r, timeout).flatMap { response: AsyncResponse =>
+
+    val f: Future[AsyncResponse] = {
+      if (useExpect100Continue) executeWithExpectContinue(r, timeout)
+      else execute0(r.url, r, timeout, false)
+    }
+
+    f.flatMap { response: AsyncResponse =>
       if (response.status === Status.MOVED_PERMANENTLY || response.status === Status.FOUND) {
         response.headers.location.flatMap{ URI.get }.map{ location: URI =>
           
@@ -217,6 +226,15 @@ final case class DefaultHttpClient(
       } else {
         Future.successful(response)
       }
+    }
+  }
+
+  private def executeWithExpectContinue(r: Request, timeout: Duration): Future[AsyncResponse] = {
+    execute0(r.url, r, timeout, true).flatMap { response: AsyncResponse =>
+      if (response.status === Status.CONTINUE) {
+        response.close()
+        execute0(r.url, r, timeout, false)
+      } else Future.successful(response)
     }
   }
   
@@ -260,7 +278,7 @@ final case class DefaultHttpClient(
   
   private[this] val traceSep: String = "======================================================================================================================="
   
-  private def execute0(url: URL, request: Request, timeout: Duration): Future[AsyncResponse] = {
+  private def execute0(url: URL, request: Request, timeout: Duration, send100ContinueExpected: Boolean): Future[AsyncResponse] = {
     if (logger.isTraceEnabled) logger.trace(s"Sending Request:\n$traceSep\n$request\n$traceSep\n")
     else logger.info(s"${request.method.name} $url")
     
@@ -309,7 +327,7 @@ final case class DefaultHttpClient(
         
         if (doWrite) {
           if (logger.isTraceEnabled) logger.trace(s"ch.writeAndFlush to channel: $ch for $host:$port$uri")
-          ch.writeAndFlush(NettyHttpClientPipelineHandler.URIRequestAndPromise(uri, fixedRequest, promise))
+          ch.writeAndFlush(NettyHttpClientPipelineHandler.URIRequestAndPromise(uri, fixedRequest, promise, send100ContinueExpected))
         }
       
       case Failure(ex) =>

@@ -17,15 +17,12 @@ package fm.http.client
 
 import java.io.{File, FileNotFoundException, IOException, RandomAccessFile}
 import java.net.SocketAddress
-
 import io.netty.channel._
 import io.netty.channel.group.ChannelGroup
 import io.netty.handler.codec.http._
 import io.netty.util.ReferenceCountUtil
-
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
-
 import fm.http._
 import fm.common.Logging
 
@@ -42,7 +39,7 @@ object NettyHttpClientPipelineHandler {
     ch.pipeline().get(classOf[NettyHttpClientPipelineHandler]).pool = pool
   }
   
-  final case class URIRequestAndPromise(uri: String, request: Request, promise: Promise[AsyncResponse])
+  final case class URIRequestAndPromise(uri: String, request: Request, promise: Promise[AsyncResponse], send100ContinueExpected: Boolean)
 }
 
 final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, executionContext: ExecutionContext) extends ChannelInboundHandlerAdapter with ChannelOutboundHandler with Logging {
@@ -107,8 +104,8 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   }
   
   protected def channelReadImpl(obj: AnyRef)(implicit ctx: ChannelHandlerContext): Unit = obj match {
-    case response: HttpResponse =>      
-      require(null eq contentBuilder, "Received an HttpResponse before the previous contentBuilder was completed!")     
+    case response: HttpResponse =>
+      require(null eq contentBuilder, "Received an HttpResponse before the previous contentBuilder was completed!")
       require(null ne responsePromise, "No promise to receive the HttpResponse")
       require(!obj.isInstanceOf[HttpContent], "Not Expecting HttpContent!")
 
@@ -144,8 +141,9 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   
   private def channelReadHttpResponse(nettyResponse: HttpResponse, content: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext): Unit = {
     require(null ne responsePromise, "No promise to receive the HttpResponse")
-    
-    val contentReader: LinkedHttpContentReader = LinkedHttpContentReader(need100Continue = false, head = content)
+    val contentLength: Option[Long] = Try { HttpUtil.getContentLength(nettyResponse) }.toOption
+
+    val contentReader: LinkedHttpContentReader = LinkedHttpContentReader(need100Continue = false, contentLength = contentLength, head = content)
     
     val response: AsyncResponse = new AsyncResponse(nettyResponse, contentReader)
     
@@ -153,7 +151,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
     responsePromise = null
   }
   
-  def writeRequest(uri: String, request: Request, promise: Promise[AsyncResponse], channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {
+  def writeRequest(uri: String, request: Request, promise: Promise[AsyncResponse], channelPromise: ChannelPromise, send100ContinueExpected: Boolean)(implicit ctx: ChannelHandlerContext): Unit = {
     trace("writeRequest")
     
     require(responsePromise eq null, "Expected responsePromise to be null")
@@ -162,11 +160,20 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
     responsePromise = promise
     
     val version: HttpVersion = HttpVersion.HTTP_1_1
-    
+
+    // URIRequestAndPromise
+
     request match {
-      case full:  FullRequest  => sendFullRequest(promise, prepareRequest(full.toFullHttpRequest(version, uri)), channelPromise)
-      case async: AsyncRequest => sendAsyncRequest(promise, prepareRequest(async.toHttpRequest(version, uri)), async.head, channelPromise)
-      case file:  FileRequest  => sendFileRequest(promise, prepareRequest(file.toHttpRequest(version, uri)), file.file, channelPromise)
+      case full:  FullRequest  =>
+        if (send100ContinueExpected) {
+          val request: HttpRequest = prepareRequest(full.toHttpRequest(version, uri))
+          HttpUtil.setContentLength(request, full.buf.readableBytes())
+          sendAsyncRequest(promise, request, None, channelPromise, true)
+        } else {
+          sendFullRequest(promise, prepareRequest(full.toFullHttpRequest(version, uri)), channelPromise)
+        }
+      case async: AsyncRequest => sendAsyncRequest(promise, prepareRequest(async.toHttpRequest(version, uri)), if (send100ContinueExpected) None else Some(async.head), channelPromise, send100ContinueExpected)
+      case file:  FileRequest  => sendFileRequest(promise, prepareRequest(file.toHttpRequest(version, uri)), file.file, channelPromise, send100ContinueExpected)
     }
     
     // Allow the HttpResponse message to be read
@@ -186,25 +193,31 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   
   private def sendFullRequest(promise: Promise[AsyncResponse], request: FullHttpRequest, channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {
     trace("sendFullRequest")
-    
+
     // Set the Content-Length since this is a full response which should have a known size
     HttpUtil.setContentLength(request, request.content.readableBytes())
-    
+
     ctx.writeAndFlush(request).onComplete{
       case Success(_) => channelPromise.setSuccess()
       case Failure(ex) => fail(promise, ex, channelPromise)
     }
   }
   
-  private def sendAsyncRequest(promise: Promise[AsyncResponse], request: HttpRequest, head: LinkedHttpContent, channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {
+  private def sendAsyncRequest(promise: Promise[AsyncResponse], request: HttpRequest, head: Option[LinkedHttpContent], channelPromise: ChannelPromise, send100ContinueExpected: Boolean)(implicit ctx: ChannelHandlerContext): Unit = {
     trace("sendAsyncRequest")
-    
-    // We don't know the size in advance since we'll be using: Transfer-Encoding: chunked
-    request.headers().remove(HttpHeaderNames.CONTENT_LENGTH)
-    HttpUtil.setTransferEncodingChunked(request, true)
-    
+
+    // If we are sending Expect: continue, then don't chunk the request
+    if (send100ContinueExpected) {
+      HttpUtil.set100ContinueExpected(request, true)
+      HttpUtil.setTransferEncodingChunked(request, false)
+    } else {
+      // We don't know the size in advance since we'll be using: Transfer-Encoding: chunked
+      request.headers().remove(HttpHeaderNames.CONTENT_LENGTH)
+      HttpUtil.setTransferEncodingChunked(request, true)
+    }
+
     ctx.writeAndFlush(request).onComplete{
-      case Success(_) => sendChunk(promise, Some(head), channelPromise)
+      case Success(_) => sendChunk(promise, head, channelPromise)
       case Failure(ex) => fail(promise, ex, channelPromise)
     }
   }
@@ -222,7 +235,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
     trace("sendChunk - unwrapped")
     
     chunk match {
-      case Some(content) => require(content.nonEmpty, "Empty Buffer?!"); ctx.writeAndFlush(content).onComplete{ onChunkSendComplete(promise, _, content.tail, channelPromise) }
+      case Some(content) => /*require(content.nonEmpty, s"Empty Buffer?!, $content");*/ ctx.writeAndFlush(content).onComplete{ onChunkSendComplete(promise, _, content.tail, channelPromise) }
       case None => ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{
         case Success(_) => channelPromise.setSuccess()
         case Failure(ex) => fail(promise, ex, channelPromise)
@@ -241,24 +254,32 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
     }
   }
   
-  private def sendFileRequest(promise: Promise[AsyncResponse], request: HttpRequest, file: File, channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {
+  private def sendFileRequest(promise: Promise[AsyncResponse], request: HttpRequest, file: File, channelPromise: ChannelPromise, send100ContinueExpected: Boolean)(implicit ctx: ChannelHandlerContext): Unit = {
     trace("sendFileRequest")
     
     if (!file.isFile || !file.canRead) {
       fail(promise, new FileNotFoundException("Missing File: "+file), channelPromise)
       return
     }
-    
-    val raf: RandomAccessFile = new RandomAccessFile(file, "r")
-    val length: Long = raf.length()
-    
-    // Set the Content-Length since we know the length of the file
-    HttpUtil.setContentLength(request, length)
-    
-    ctx.write(request)
-    ctx.writeAndFlush(new DefaultFileRegion(raf.getChannel, 0, length)).flatMap{ _ => 
-      ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT)
-    }.onComplete{
+
+    val f: Future[Void] = if (send100ContinueExpected) {
+      HttpUtil.setContentLength(request, file.length)
+      HttpUtil.set100ContinueExpected(request, true)
+
+      ctx.writeAndFlush(request)
+    } else {
+      val raf: RandomAccessFile = new RandomAccessFile(file, "r")
+      val length: Long = raf.length()
+
+      HttpUtil.setContentLength(request, length)
+
+      ctx.write(request)
+      ctx.writeAndFlush(new DefaultFileRegion(raf.getChannel, 0, length)).flatMap{ _ =>
+        ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT)
+      }
+    }
+
+    f.onComplete{
       case Success(_) => channelPromise.setSuccess()
       case Failure(ex) => fail(promise, ex, channelPromise)
     }
@@ -286,7 +307,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   }
   
   def write(ctx: ChannelHandlerContext, obj: AnyRef, channelPromise: ChannelPromise): Unit = obj match {
-    case URIRequestAndPromise(uri, request, promise) => writeRequest(uri, request, promise, channelPromise)(ctx)
+    case URIRequestAndPromise(uri, request, promise, send100ContinueExpected) => writeRequest(uri, request, promise, channelPromise, send100ContinueExpected)(ctx)
     case _ => throw new Exception("Invalid obj: "+obj)
   }
   

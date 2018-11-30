@@ -26,7 +26,7 @@ import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
 import scala.concurrent.{Await, Future, Promise}
 import scala.concurrent.duration._
 
-object TestClientAndServer {
+object TestClientAndServer extends Logging {
   val port: Int = 1234
   val requestCount: Int = 1000
 
@@ -54,6 +54,7 @@ object TestClientAndServer {
 
   val client: HttpClient = HttpClient(maxConnectionsPerHost = 1000, maxRequestQueuePerHost = requestCount, defaultResponseTimeout = 60.seconds)
   val clientNoFollowRedirects: HttpClient = HttpClient(maxConnectionsPerHost = 1000, maxRequestQueuePerHost = requestCount, defaultResponseTimeout = 60.seconds, followRedirects = false)
+  val clientWithExpect100Continue: HttpClient = HttpClient(maxConnectionsPerHost = 1000, maxRequestQueuePerHost = requestCount, defaultResponseTimeout = 60.seconds, useExpect100Continue = true)
 
   def startServer(): Unit = server
   def stopServer(): Unit = server.shutdown()
@@ -122,40 +123,70 @@ object TestClientAndServer {
   import scala.concurrent.ExecutionContext.Implicits.global
 
   protected val unwrappedHandler: PartialFunction[Request, Future[Response]] = (request: Request) => request match {
-    case GET(simple"/${INT(code)}")       => Response(Status(code), Status(code).msg)
-    case GET(simple"/close/${INT(code)}") => Response(Status(code), Headers("Connection" -> "close"), Status(code).msg)
-    case GET("/data_one_mb")              => Response.Ok(makeLinkedHttpContent(OneMB))
-    case GET("/data_hundred_mb")          => Response.Ok(makeLinkedHttpContent(OneMB * 100))
+    case GET(simple"/${INT(code)}")                    => Response(Status(code), Status(code).msg)
+    case GET(simple"/close/${INT(code)}")              => Response(Status(code), Headers("Connection" -> "close"), Status(code).msg)
+    case GET("/data_one_mb")                           => Response.Ok(makeLinkedHttpContent(OneMB))
+    case GET("/data_hundred_mb")                       => Response.Ok(makeLinkedHttpContent(OneMB * 100))
 
-    case GET("/utf-8")                    => Response.Ok(UTF8Header, Unpooled.copiedBuffer("£", StandardCharsets.UTF_8))
-    case GET("/json")                     => Response.Ok(jsonHeader, Unpooled.copiedBuffer("£", StandardCharsets.UTF_8))
-    case GET("/json-latin1")              => Response.Ok(jsonLatin1Header, Unpooled.copiedBuffer("£", StandardCharsets.ISO_8859_1))
-    case GET("/json-latin1-utf8-data")    => Response.Ok(jsonLatin1Header, Unpooled.copiedBuffer("£", StandardCharsets.UTF_8))
+    case POST("/write_to_file_max_length_one_mb")      => {
+      val file = File.createTempFile("fm-http-tests", ".tmp")
 
-    case GET("/latin1")                   => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", StandardCharsets.ISO_8859_1))
-    case GET("/default-latin1")           => Response.Ok(Headers.empty, Unpooled.copiedBuffer("£", StandardCharsets.ISO_8859_1))
-    case GET("/latin1-header-utf8-data")  => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", StandardCharsets.UTF_8))
+      val res: Future[Response] = request.content.writeToFile(file, OneMB, LinkedHttpContentReader.MaxLengthStrategy.DiscardAndThrowException).map { _ =>
+        Response.Ok(file.length.toString)
+      }.recoverWith {
+        case ex: LinkedHttpContentReader.MaxLengthException => Future.successful(Response.plain(Status.REQUEST_ENTITY_TOO_LARGE, "413 Request Entity Too Large"))
+      }
 
-    case GET("/bad_content_type_charset") => Response.plain(Status.OK, QuotedUTF8Header, "Hello World")
+      res.onComplete { _ => file.delete() }
 
-    case GET("/ok")                       => Response.Ok(Headers.empty, Unpooled.copiedBuffer("ok", StandardCharsets.ISO_8859_1))
-    case GET("/redirect")                 => Response.Found("/ok")
+      res
+    }
+
+    case POST("/read_to_string_max_length_one_mb")     => {
+      request.content.readToString(OneMB, LinkedHttpContentReader.MaxLengthStrategy.DiscardAndThrowException).map { data: String =>
+        Response.Ok(data.size.toString)
+      }.recoverWith {
+        case ex: LinkedHttpContentReader.MaxLengthException => Future.successful(Response.plain(Status.REQUEST_ENTITY_TOO_LARGE, "413 Request Entity Too Large"))
+      }
+    }
+
+    case POST("/read_to_byte_array_max_length_one_mb") => {
+      request.content.readToByteArray(OneMB, LinkedHttpContentReader.MaxLengthStrategy.DiscardAndThrowException).map { data: Array[Byte] =>
+        Response.Ok(data.size.toString)
+      }.recoverWith {
+        case ex: LinkedHttpContentReader.MaxLengthException => Future.successful(Response.plain(Status.REQUEST_ENTITY_TOO_LARGE, "413 Request Entity Too Large"))
+      }
+    }
+
+    case GET("/utf-8")                                 => Response.Ok(UTF8Header, Unpooled.copiedBuffer("£", StandardCharsets.UTF_8))
+    case GET("/json")                                  => Response.Ok(jsonHeader, Unpooled.copiedBuffer("£", StandardCharsets.UTF_8))
+    case GET("/json-latin1")                           => Response.Ok(jsonLatin1Header, Unpooled.copiedBuffer("£", StandardCharsets.ISO_8859_1))
+    case GET("/json-latin1-utf8-data")                 => Response.Ok(jsonLatin1Header, Unpooled.copiedBuffer("£", StandardCharsets.UTF_8))
+
+    case GET("/latin1")                                => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", StandardCharsets.ISO_8859_1))
+    case GET("/default-latin1")                        => Response.Ok(Headers.empty, Unpooled.copiedBuffer("£", StandardCharsets.ISO_8859_1))
+    case GET("/latin1-header-utf8-data")               => Response.Ok(Latin1Header, Unpooled.copiedBuffer("£", StandardCharsets.UTF_8))
+
+    case GET("/bad_content_type_charset")              => Response.plain(Status.OK, QuotedUTF8Header, "Hello World")
+
+    case GET("/ok")                                    => Response.Ok(Headers.empty, Unpooled.copiedBuffer("ok", StandardCharsets.ISO_8859_1))
+    case GET("/redirect")                              => Response.Found("/ok")
     
-    case GET("/redirect1")                => Response.Found("/redirect")
-    case GET("/redirect2")                => Response.MovedPermanently("/redirect1")
-    case GET("/redirect3")                => Response.Found(s"http://localhost:$port/redirect2")
-    case GET("/redirect4")                => Response.Found("/redirect3")
-    case GET("/redirect5")                => Response.Found("/redirect4")
-    case GET("/redirect6")                => Response.Found("/redirect5")
+    case GET("/redirect1")                             => Response.Found("/redirect")
+    case GET("/redirect2")                             => Response.MovedPermanently("/redirect1")
+    case GET("/redirect3")                             => Response.Found(s"http://localhost:$port/redirect2")
+    case GET("/redirect4")                             => Response.Found("/redirect3")
+    case GET("/redirect5")                             => Response.Found("/redirect4")
+    case GET("/redirect6")                             => Response.Found("/redirect5")
 
-    case GET("/ip")                       => Response.Ok(request.remoteIp.toString)
+    case GET("/ip")                                    => Response.Ok(request.remoteIp.toString)
 
-    case GET("/basic_auth")               => handleBasicAuth(request)
+    case GET("/basic_auth")                            => handleBasicAuth(request)
 
-    case GET("/file")                     => Response.Ok(UTF8Header, tmpFile)
-    case GET("/random_access_file")       => Response.Ok(UTF8Header, makeRandomAccessFile("This is a random access file"))
+    case GET("/file")                                  => Response.Ok(UTF8Header, tmpFile)
+    case GET("/random_access_file")                    => Response.Ok(UTF8Header, makeRandomAccessFile("This is a random access file"))
 
-    case GET("/header_modifications")     => {
+    case GET("/header_modifications")                  => {
       implicit val r: Request = request
 
       // This should override what gets set as part of the Response.Ok line
@@ -181,8 +212,8 @@ object TestClientAndServer {
       Response.Ok(headers, Unpooled.copiedBuffer("ok", StandardCharsets.ISO_8859_1))
     }
 
-    case POST("/upload")                  => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ sum: Int => Response.Ok(sum.toString) }
-    case POST("/close/upload")            => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ sum: Int => Response(Status(200), Headers("Connection" -> "close"), sum.toString) }
+    case POST("/upload")                               => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ sum: Int => Response.Ok(sum.toString) }
+    case POST("/close/upload")                         => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ sum: Int => Response(Status(200), Headers("Connection" -> "close"), sum.toString) }
   }
 
   private def handleBasicAuth(request: Request): Response = {
@@ -240,11 +271,12 @@ object TestClientAndServer {
 }
 
 // TODO: split this into a "stress test" mode and a "normal" unit testing mode
-final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAfterAll {
+final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAfterAll with Logging {
   import TestClientAndServer.{charForIdx, client, clientNoFollowRedirects, port, requestCount}
   import client.executionContext
   import fm.http.client._
-  
+  import TestClientAndServer.OneMB
+
   override def beforeAll(): Unit = {
     Logging.setLevelToWarn(classOf[HttpClient])
     TestClientAndServer.startServer()
@@ -364,6 +396,46 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     }
   }
 
+  test("LinkedHttpContentReader.writeToFile") {
+
+
+    checkMaxLength("/write_to_file_max_length_one_mb", OneMB, Status.OK, (OneMB).toString)
+    checkMaxLength("/write_to_file_max_length_one_mb", OneMB/2, Status.OK, (OneMB/2).toString)
+    checkMaxLength("/write_to_file_max_length_one_mb", OneMB*2, Status.REQUEST_ENTITY_TOO_LARGE, "413 Request Entity Too Large")
+  }
+
+  test("LinkedHttpContentReader.readToString") {
+    checkMaxLength("/read_to_string_max_length_one_mb", OneMB, Status.OK, OneMB.toString)
+    checkMaxLength("/read_to_string_max_length_one_mb", OneMB/2, Status.OK, (OneMB/2).toString)
+    checkMaxLength("/read_to_string_max_length_one_mb", OneMB*2, Status.REQUEST_ENTITY_TOO_LARGE, "413 Request Entity Too Large")
+
+    // Real data is less than correct size, but verify the content-length checking is working correct.
+    checkMaxLength(
+      "/read_to_string_max_length_one_mb",
+       OneMB/2, Status.REQUEST_ENTITY_TOO_LARGE,
+      "413 Request Entity Too Large",
+      client.defaultHeaders.withHeaders(("Content-Length", OneMB*2)),
+      TestClientAndServer.clientWithExpect100Continue
+    )
+  }
+
+  test("LinkedHttpContentReader.readToByteArray") {
+    checkMaxLength("/read_to_byte_array_max_length_one_mb", OneMB, Status.OK, OneMB.toString)
+    checkMaxLength("/read_to_byte_array_max_length_one_mb", OneMB*2, Status.REQUEST_ENTITY_TOO_LARGE, "413 Request Entity Too Large")
+  }
+
+  private def checkMaxLength(path: String, size: Long, expectedStatus: Status, expectedBody: String, headers: Headers = client.defaultHeaders, httpClient: HttpClient = client): Unit = {
+    val res: AsyncResponse = Await.result(postAsyncSize(path, size, headers, httpClient), 60.seconds)
+
+    res.status should equal(expectedStatus)
+    Await.result(res.readBodyToString(), 10.seconds) should equal(expectedBody)
+  }
+
+  private def postAsyncSize(path: String, size: Long, headers: Headers, httpClient: HttpClient): Future[AsyncResponse] = {
+    val content: LinkedHttpContent = TestClientAndServer.makeLinkedHttpContent(size)
+    httpClient.postAsync(makeUrl(path), content, headers)
+  }
+
   test(s"Parallel Sync POST Requests ($requestCount Requests)") {
     // Uses blocking calls to maintain a constant number of connections to the server
     LazySeq.wrap(1 to requestCount).parForeach(threads=64){ _ =>
@@ -449,7 +521,12 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     }
   }
 
-//  // This test uses up too much native memory:
+  test("Single Request with Large Response Body (100 MB) with MaxLength 10MB") {
+    Await.result(getAndVerifyData("/data_hundred_mb"), 60.seconds)
+  }
+
+
+  //  // This test uses up too much native memory:
 //  test("Async Requests with Large Response Body (1,000 Requests, 1 MB)") {
 //    // Uses async non-blocking calls to make as many connections as possible to the server
 //    val futures: Seq[Future[Boolean]] = (1 to 1000).map{ _ => getAndVerifyData("/data_one_mb") }
