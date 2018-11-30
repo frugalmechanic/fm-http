@@ -58,9 +58,9 @@ object TestClientAndServer {
   def startServer(): Unit = server
   def stopServer(): Unit = server.shutdown()
 
-  private val options: HttpServerOptions = HttpServerOptions(
-    requestIdResponseHeader = Some("X-Request-Id"),
-    clientIPLookupSpecs = Seq(
+  private val options: HttpServerOptions = HttpServerOptions.default
+    .withRequestIdResponseHeader(Some("X-Request-Id"))
+    .withClientIPLookupSpecs(Seq(
       HttpServerOptions.ClientIPLookupSpec(
         headerName = "X-Client-IP",
         requiredHeaderAndValue = Some(("X-Is-From-CDN", "abc123")),
@@ -97,8 +97,7 @@ object TestClientAndServer {
         requiredHeaderAndValue = None,
         valueToUse = HttpServerOptions.ClientIPHeaderValueToUse.OffsetFromLast(2)
       )
-    )
-  )
+    ))
   
   private lazy val server: HttpServer = HttpServer(port, router, "ABC123", options)
   
@@ -210,8 +209,10 @@ object TestClientAndServer {
     
     b.result()
   }
-  
-  protected def makeLinkedHttpContent(sizeBytes: Long, idx: Long = 0): LinkedHttpContent = {
+
+  protected def makeLinkedHttpContent(sizeBytes: Long): LinkedHttpContent = makeLinkedHttpContent(sizeBytes, 0)
+
+  protected def makeLinkedHttpContent(sizeBytes: Long, idx: Long): LinkedHttpContent = {
     if (sizeBytes <= 0) return LinkedHttpContent(Unpooled.EMPTY_BUFFER)
     
     val sizeToGenerate: Int = math.min(sizeBytes, BodyChunkSize).toInt
@@ -258,13 +259,26 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     require(path.startsWith("/"), "Path must start with a slash: "+path)
     s"http://127.0.0.1:${TestClientAndServer.port}"+path
   }
-  
+
+  private def getSync(
+    path: String,
+    expectedCode: Int,
+    expectedBody: String
+  ): FullStringResponse = getSync(path, expectedCode, expectedBody, client)
+
   private def getSync(
     path: String,
     expectedCode: Int,
     expectedBody: String,
-    httpClient: HttpClient = client,
-    headers: Headers = Headers.empty
+    httpClient: HttpClient,
+  ): FullStringResponse = getSync(path, expectedCode, expectedBody, httpClient, Headers.empty)
+
+  private def getSync(
+    path: String,
+    expectedCode: Int,
+    expectedBody: String,
+    httpClient: HttpClient,
+    headers: Headers,
   ): FullStringResponse = TestHelpers.withCallerInfo{
     val f: Future[FullStringResponse] = getFullStringAsync(path, httpClient, headers)
     val res: FullStringResponse = Await.result(f, 10.seconds)
@@ -277,8 +291,15 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     path: String,
     postBody: String,
     expectedCode: Int,
+    expectedBody: String
+  ): Unit = postSync(path, postBody, expectedCode, expectedBody, client)
+
+  private def postSync(
+    path: String,
+    postBody: String,
+    expectedCode: Int,
     expectedBody: String,
-    httpClient: HttpClient = client
+    httpClient: HttpClient
   ): Unit = TestHelpers.withCallerInfo{
     val f: Future[FullStringResponse] = postFullStringAsync(path, postBody, httpClient)
     val res: FullStringResponse = Await.result(f, 10.seconds)
@@ -297,7 +318,12 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   private def postFullStringAsync(
     path: String,
     postBody: String,
-    httpClient: HttpClient = client
+  ): Future[FullStringResponse] = postFullStringAsync(path, postBody, client)
+
+  private def postFullStringAsync(
+    path: String,
+    postBody: String,
+    httpClient: HttpClient,
   ): Future[FullStringResponse] = {
     httpClient.postFullString(makeUrl(path), postBody)
   }
@@ -622,6 +648,6 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   }
 
   private def checkIp(expected: String, headers: (String,String)*): Unit = TestHelpers.withCallerInfo{
-    getSync("/ip", 200, expected, headers = Headers(headers:_*))
+    getSync("/ip", 200, expected, client, headers = Headers(headers:_*))
   }
 }

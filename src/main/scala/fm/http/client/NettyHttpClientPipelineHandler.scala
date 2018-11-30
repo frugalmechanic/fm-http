@@ -145,7 +145,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   private def channelReadHttpResponse(nettyResponse: HttpResponse, content: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext): Unit = {
     require(null ne responsePromise, "No promise to receive the HttpResponse")
     
-    val contentReader: LinkedHttpContentReader = LinkedHttpContentReader(need100Continue = false, content)
+    val contentReader: LinkedHttpContentReader = LinkedHttpContentReader(need100Continue = false, head = content)
     
     val response: AsyncResponse = new AsyncResponse(nettyResponse, contentReader)
     
@@ -301,8 +301,10 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
     failPromises(cause)(ctx)
     ctx.close()
   }
-  
-  private def trace(name: String, ex: Throwable = null)(implicit ctx: ChannelHandlerContext): Unit = {
+
+  private def trace(name: String)(implicit ctx: ChannelHandlerContext): Unit = trace(name, null)
+
+  private def trace(name: String, ex: Throwable)(implicit ctx: ChannelHandlerContext): Unit = {
     if (logger.isTraceEnabled) logger.trace(s"$id - $name - ${ctx.channel}", ex)
   }
 }

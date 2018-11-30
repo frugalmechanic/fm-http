@@ -8,15 +8,21 @@ import fm.common.Logging
  * 
  * For best results limit the scope of the reloadablePackages.
  */
+
+object ReloadingRequestRouter {
+  def apply(className: String, reloadablePackages: Seq[String]): ReloadingRequestRouter = apply(className, reloadablePackages, classOf[ReloadingRequestRouter].getClassLoader)
+  def apply(className: String, reloadablePackages: Seq[String], parent: ClassLoader): ReloadingRequestRouter = apply(className, reloadablePackages, parent, false)
+}
+
 final case class ReloadingRequestRouter(
   /* The fully qualified className of the RequestRouter that this ReloadingRequestRouter wraps */
   className: String,
   /* Java/Scala Package Prefixes that are allowed to be reloaded */
   reloadablePackages: Seq[String],
   /* The parent ClassLoader to use */
-  parent: ClassLoader = classOf[ReloadingRequestRouter].getClassLoader,
+  parent: ClassLoader,
   /* Show debugging output */
-  debug: Boolean = false
+  debug: Boolean
 ) extends RequestRouter with Logging {
   
   private[this] val reloadingClassLoader: ReloadingClassLoaderHolder = new ReloadingClassLoaderHolder(reloadablePackages, parent, debug)
