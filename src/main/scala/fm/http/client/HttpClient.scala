@@ -50,7 +50,8 @@ object HttpClient {
     defaultCharset: Charset = StandardCharsets.ISO_8859_1, // The default charset to use (if none is specified in the response) when converting responses to strings
     followRedirects: Boolean = true, // Should 301/302 redirects be followed for GET or HEAD requests?
     maxRedirectCount: Int = 5,  // The maximum number of 301/302 redirects to follow for a GET or HEAD request if followRedirects is true
-    disableSSLCertVerification: Boolean = false // Do not verify SSL certs (SHOULD NOT USE IN PRODUCTION)
+    disableSSLCertVerification: Boolean = false, // Do not verify SSL certs (SHOULD NOT USE IN PRODUCTION)
+    useExpect100Continue: Boolean = false, // By default, don't send an Expect: 100 Continue, just send the content
   ): DefaultHttpClient = DefaultHttpClient(
     proxy = proxy,
     defaultMaxLength = defaultMaxLength,
@@ -64,7 +65,8 @@ object HttpClient {
     defaultCharset = defaultCharset,
     followRedirects = followRedirects,
     maxRedirectCount = maxRedirectCount,
-    disableSSLCertVerification = disableSSLCertVerification
+    disableSSLCertVerification = disableSSLCertVerification,
+    useExpect100Continue = useExpect100Continue
   )
   
   private val DefaultHeaders: ImmutableHeaders = {
@@ -109,6 +111,9 @@ abstract class HttpClient extends Closeable {
   private def postFullImpl(url: String, body: String, headers: Headers, maxLength: Long, timeout: Duration): Future[FullResponse] = postAsyncImpl(url, body, headers, timeout).flatMap{ _.toFullResponse(maxLength) }
   private def postFullStringImpl(url: String, body: String, headers: Headers, maxLength: Long, timeout: Duration, defaultCharset: Charset): Future[FullStringResponse] = postAsyncImpl(url, body, headers, timeout).flatMap{ _.toFullStringResponse(maxLength, defaultCharset) }
   private def getAsyncImpl(url: String, headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Get(url, headers), timeout)
+
+  // LinkedHttpContent
+  private def postAsyncImpl(url: String, head: LinkedHttpContent, headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Post(url, headers, head), timeout)
   private def postAsyncImpl(url: String, body: String, headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Post(url, headers, body), timeout)
   private def postAsyncImpl(url: String, body: Array[Byte], headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Post(url, headers, body), timeout)
   private def postAsyncImpl(url: String, body: File, headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Post(url, headers, body), timeout)
@@ -319,6 +324,15 @@ println(makeMethodCombinations("postAsync", "postAsyncImpl", "Future[AsyncRespon
 
   /** Perform a GET request returning an AsyncResponse for reading arbitrarily long response bodies */
   final def getAsync(url: String, headers: Headers, timeout: Duration): Future[AsyncResponse] = getAsyncImpl(url, headers, timeout)
+
+  /** Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def postAsync(url: String, head: LinkedHttpContent): Future[AsyncResponse] = postAsyncImpl(url, head, defaultHeaders, defaultResponseTimeout)
+
+  /** Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def postAsync(url: String, head: LinkedHttpContent, headers: Headers): Future[AsyncResponse] = postAsyncImpl(url, head, headers, defaultResponseTimeout)
+
+  /** Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def postAsync(url: String, head: LinkedHttpContent, headers: Headers, timeout: Duration): Future[AsyncResponse] = postAsyncImpl(url, head, headers, timeout)
 
   /** Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies */
   final def postAsync(url: String, body: Array[Byte]): Future[AsyncResponse] = postAsyncImpl(url, body, defaultHeaders, defaultResponseTimeout)

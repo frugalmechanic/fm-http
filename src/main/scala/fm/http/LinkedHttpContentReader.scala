@@ -15,30 +15,56 @@
  */
 package fm.http
 
-import fm.common.{IOUtils, Logging}
+import fm.common.{IOUtils, Logging, StacklessException}
+import fm.common.Implicits._
 import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http.{DefaultFullHttpResponse, FullHttpResponse, HttpResponseStatus, HttpVersion}
 import io.netty.util.CharsetUtil
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, Closeable, File, FileOutputStream}
 import java.nio.charset.Charset
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong}
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
 
-object LinkedHttpContentReader {
-  def apply(need100Continue: Boolean, head: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext, executor: ExecutionContext): LinkedHttpContentReader = new LinkedHttpContentReader(need100Continue, head)
+object LinkedHttpContentReader extends Logging {
+  def apply(need100Continue: Boolean, contentLength: Option[Long], head: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext, executor: ExecutionContext): LinkedHttpContentReader = new LinkedHttpContentReader(need100Continue, contentLength, head)
 
   def empty(implicit executor: ExecutionContext): LinkedHttpContentReader = {
     val ctx: ChannelHandlerContext = null
-    LinkedHttpContentReader(false, Future.successful(None))(ctx, executor)
+    LinkedHttpContentReader(false, None, Future.successful(None))(ctx, executor)
+  }
+
+  sealed trait MaxLengthStrategy {
+    def checkMaxLengthAfterRead(currentLength: Long, maxLength: Long): Unit = {
+      if ((this === MaxLengthStrategy.CloseConnection) && currentLength > maxLength) throw new MaxLengthException(s"Body exceeds maxLength.  Body Length (so far): $currentLength  Specified Max Length: $maxLength")
+    }
+
+    // This is just an alias of checkMaxLengthOnComplete, but helpful for reading the code.
+    def checkMaxLengthFromContentLength(contentLength: Long, maxLength: Long): Unit = checkMaxLengthAfterAllContentRead(contentLength, maxLength)
+
+    def checkMaxLengthAfterAllContentRead(bodyLength: Long, maxLength: Long): Unit = {
+      if ((this === MaxLengthStrategy.DiscardAndThrowException) &&  bodyLength > maxLength) throw new MaxLengthException(s"Body exceeds maxLength. Body Length: $bodyLength  Specified Max Length: $maxLength")
+    }
+  }
+
+  case class MaxLengthException(msg: String) extends StacklessException(msg)
+
+  object MaxLengthStrategy {
+    // Throws an exception immediately when limit reached
+    case object CloseConnection          extends MaxLengthStrategy
+    // No exception, but response is truncated to the limit
+    case object Truncate                 extends MaxLengthStrategy
+    // Reads the entire linked reader but starts discarding content after the max limit, and then throws exception after fully read.
+    case object DiscardAndThrowException extends MaxLengthStrategy
   }
 
   private val CONTINUE: FullHttpResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.CONTINUE, Unpooled.EMPTY_BUFFER)  
 }
 
-final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext, executor: ExecutionContext) extends Closeable with Logging {
+final class LinkedHttpContentReader(is100ContinueExpected: Boolean, contentLength: Option[Long], head: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext, executor: ExecutionContext) extends Closeable with Logging {
   import LinkedHttpContentReader.CONTINUE
+  import LinkedHttpContentReader.MaxLengthStrategy
 
   private[this] val foldLeftCalled: AtomicBoolean = new AtomicBoolean(false)
   private[this] val hasBeenFullyRead: AtomicBoolean = new AtomicBoolean(false)
@@ -69,55 +95,114 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
    * This will be completed when the body is fully read (or an exception is thrown)
    */
   def future: Future[Unit] = completedPromise.future
-  
+
   /**
    * Read the response body into an Array[Byte]
    */
-  def readToByteArray(maxLength: Long = Long.MaxValue): Future[Array[Byte]] = {
+  def readToByteArray(): Future[Array[Byte]] = readToByteArray(Long.MaxValue)
+  def readToByteArray(maxLength: Long): Future[Array[Byte]] = readToByteArray(maxLength, MaxLengthStrategy.CloseConnection)
+  
+  def readToByteArray(maxLength: Long, maxLengthStrategy: MaxLengthStrategy): Future[Array[Byte]] = {
+    contentLength.foreach{ maxLengthStrategy.checkMaxLengthFromContentLength(_, maxLength) }
+
+    val bytesRead: AtomicLong = new AtomicLong(0)
+
     foldLeft(new ByteArrayOutputStream){ (out: ByteArrayOutputStream, buf: ByteBuf) =>
+      val readableBytes: Int = buf.readableBytes
+      bytesRead.addAndGet(readableBytes)
       buf.readBytes(out, buf.readableBytes())
-      require(out.size() <= maxLength, s"Body exceeds maxLength.  Body Length (so far): ${out.size}  Specified Max Length: $maxLength")
+      maxLengthStrategy.checkMaxLengthAfterRead(out.size, maxLength)
+
       out
+    }.filter { _ =>
+      maxLengthStrategy.checkMaxLengthAfterAllContentRead(bytesRead.get, maxLength)
+
+      true
     }.map{ _.toByteArray }
   }
   
   /**
    * Read the response body into a string
    */
-  def readToString(maxLength: Long = Long.MaxValue, encoding: Charset = CharsetUtil.ISO_8859_1): Future[String] = {
-    if (null == encoding) readToStringWithDetectedCharset(maxLength) else readToStringWithCharset(encoding, maxLength)
+  def readToString(maxLength: Long): Future[String] = readToString(maxLength, CharsetUtil.ISO_8859_1, MaxLengthStrategy.CloseConnection)
+  def readToString(maxLength: Long, maxLengthStrategy: MaxLengthStrategy): Future[String] = readToString(maxLength, CharsetUtil.ISO_8859_1, maxLengthStrategy)
+    
+  def readToString(encoding: Charset): Future[String] = readToString(Long.MaxValue, encoding, MaxLengthStrategy.CloseConnection)
+
+  def readToString(maxLength: Long, encoding: Charset): Future[String] = readToString(maxLength, encoding, MaxLengthStrategy.CloseConnection)
+
+  def readToString(maxLength: Long, encoding: Charset, maxLengthStrategy: MaxLengthStrategy): Future[String] = {
+    if (null == encoding) readToStringWithDetectedCharset(maxLength, maxLengthStrategy) else readToStringWithCharset(encoding, maxLength, maxLengthStrategy)
   }
-  
-  def readToStringWithDetectedCharset(maxLength: Long = Long.MaxValue, defaultEncoding: Charset = CharsetUtil.ISO_8859_1): Future[String] = {
-    readToByteArray(maxLength).map{ bytes: Array[Byte] =>
+
+  def readToStringWithDetectedCharset(): Future[String] = readToStringWithDetectedCharset(Long.MaxValue)
+  def readToStringWithDetectedCharset(maxLength: Long): Future[String] = readToStringWithDetectedCharset(maxLength, CharsetUtil.ISO_8859_1)
+  def readToStringWithDetectedCharset(maxLength: Long, maxLengthStrategy: MaxLengthStrategy): Future[String] = readToStringWithDetectedCharset(maxLength, CharsetUtil.ISO_8859_1, maxLengthStrategy)
+  def readToStringWithDetectedCharset(maxLength: Long, defaultEncoding: Charset): Future[String] = readToStringWithDetectedCharset(maxLength, defaultEncoding, MaxLengthStrategy.CloseConnection)
+
+  def readToStringWithDetectedCharset(maxLength: Long, defaultEncoding: Charset, maxLengthStrategy: MaxLengthStrategy): Future[String] = {
+    readToByteArray(maxLength, maxLengthStrategy).map{ bytes: Array[Byte] =>
       val charset: Option[Charset] = IOUtils.detectCharset(new ByteArrayInputStream(bytes), false)
       
       // The default charset for text should be Latin-1 according to http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.7.1
       new String(bytes, charset.getOrElse(defaultEncoding))
     }
   }
-  
-  def readToStringWithCharset(encoding: Charset, maxLength: Long = Long.MaxValue): Future[String] = {
+
+  def readToStringWithCharset(encoding: Charset): Future[String] = readToStringWithCharset(encoding, Long.MaxValue)
+  def readToStringWithCharset(encoding: Charset, maxLength: Long): Future[String] = readToStringWithCharset(encoding, maxLength, MaxLengthStrategy.CloseConnection)
+
+  def readToStringWithCharset(encoding: Charset, maxLength: Long, maxLengthStrategy: MaxLengthStrategy): Future[String] = {
+    contentLength.foreach{ maxLengthStrategy.checkMaxLengthFromContentLength(_, maxLength) }
+
     foldLeft(new StringBuilder){ (sb: StringBuilder, buf: ByteBuf) =>
-      sb.append(buf.toString(encoding))
-      require(sb.length <= maxLength, s"Body exceeds maxLength.  Body Length (so far): ${sb.length}  Specified Max Length: $maxLength")
+      if (sb.length <= maxLength) sb.append(buf.toString(encoding))
+      else buf.discardReadBytes()
+
+
+      maxLengthStrategy.checkMaxLengthAfterRead(sb.length, maxLength)
+
       sb
+    }.filter{ sb: StringBuilder =>
+      maxLengthStrategy.checkMaxLengthAfterAllContentRead(sb.length, maxLength)
+      true
     }.map{ _.toString }
   }
-  
+
   /**
    * Write this body to a file
    */
-  def writeToFile(file: File): Future[Unit] = {
+  def writeToFile(file: File): Future[Unit] = writeToFile(file, Long.MaxValue, MaxLengthStrategy.CloseConnection)
+
+  def writeToFile(file: File, maxLength: Long, maxLengthStrategy: MaxLengthStrategy): Future[Unit] = {
+    import java.util.concurrent.atomic.AtomicLong
+    contentLength.foreach{ maxLengthStrategy.checkMaxLengthFromContentLength(_, maxLength) }
+
     val os: FileOutputStream = new FileOutputStream(file)
-    val f: Future[Unit] = foldLeft(os){ (os, buf) =>
-      buf.readBytes(os, buf.readableBytes())
-      os
-    }.map{ _ => Unit }
+    val bytesRead: AtomicLong = new AtomicLong(0)
+
+    val f: Future[Unit] = {
+      foldLeft(os){ (os, buf) =>
+        val readableBytes: Int = buf.readableBytes
+        bytesRead.addAndGet(readableBytes)
+
+        maxLengthStrategy.checkMaxLengthAfterRead(bytesRead.get, maxLength)
+        if (bytesRead.get <= maxLength) buf.readBytes(os, readableBytes)
+        else buf.discardReadBytes()
+
+        os
+      }.map{ _ => Unit }
+    }
     
-    f.onComplete{ case _ => os.close() }
-    
-    f
+    f.onComplete{ case _ =>
+      os.close()
+    }
+
+    f.filter{ _: Unit =>
+      maxLengthStrategy.checkMaxLengthAfterAllContentRead(bytesRead.get, maxLength)
+
+      true
+    }
   }
   
   /**
@@ -137,7 +222,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
     require(null != current, "current == null which means the data was already read!")
     
     val p: Promise[B] = Promise()
-    
+
     if (is100ContinueExpected) ctx.writeAndFlush(CONTINUE)
     
     foldLeft0(current)(z, op, p)

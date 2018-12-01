@@ -39,7 +39,9 @@ final class Status private (netty: HttpResponseStatus) {
     case HttpResponseStatus.TEMPORARY_REDIRECT => true // 307
     case _ => false
   }
-  
+
+  override def toString(): String = s"fm.http.Status($code)"
+
   def toHttpResponseStatus: HttpResponseStatus = netty
   
   override def hashCode: Int = netty.hashCode()

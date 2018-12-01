@@ -77,19 +77,45 @@ object HttpServerOptions {
     final case class OffsetFromLast(idx: Int) extends ClientIPHeaderValueToUse
   }
 
+  private def defaultMaxRequestsPerConnection: Long = Long.MaxValue
+
   sealed trait ClientIPHeaderValueToUse
+
+  private case class impl(
+    requestIdResponseHeader: Option[String],
+    maxRequestsPerConnection: Long,
+    clientIPLookupSpecs: Seq[HttpServerOptions.ClientIPLookupSpec]
+  ) extends HttpServerOptions {
+    def withRequestIdResponseHeader(value: Option[String]): HttpServerOptions = copy(requestIdResponseHeader = value)
+    def withMaxRequestsPerConnection(value: Long): HttpServerOptions = copy(maxRequestsPerConnection = value)
+    def withClientIPLookupSpecs(value: Seq[HttpServerOptions.ClientIPLookupSpec]): HttpServerOptions = copy(clientIPLookupSpecs = value)
+
+    require(maxRequestsPerConnection > 0, s"maxRequestsPerConnection must be > 0 ${maxRequestsPerConnection}")
+  }
+
+  def apply(): HttpServerOptions = apply(None)
+  def apply(requestIdResponseHeader: Option[String]): HttpServerOptions = apply(requestIdResponseHeader, defaultMaxRequestsPerConnection)
+  def apply(requestIdResponseHeader: Option[String], maxRequestsPerConnection: Long): HttpServerOptions = impl(requestIdResponseHeader, maxRequestsPerConnection, Seq(HttpServerOptions.defaultClientIPLookupSpec))
+
+  /**
+    *
+    * @param requestIdResponseHeader Set this to include the Request.id in the response headers
+    * @param maxRequestsPerConnection The maximum number of requests that we will process per connection.
+    * @param clientIPLookupSpecs How to lookup the client IP from headers (in priority order)
+    */
+  def apply(
+    requestIdResponseHeader: Option[String],
+    maxRequestsPerConnection: Long,
+    clientIPLookupSpecs: Seq[ClientIPLookupSpec],
+  ): HttpServerOptions = impl(requestIdResponseHeader, maxRequestsPerConnection, clientIPLookupSpecs)
 }
 
-/**
- *
- * @param requestIdResponseHeader Set this to include the Request.id in the response headers
- * @param maxRequestsPerConnection The maximum number of requests that we will process per connection
- * @param clientIPLookupSpecs How to lookup the client IP from headers (in priority order)
- */
-final case class HttpServerOptions(
-  requestIdResponseHeader: Option[String],
-  maxRequestsPerConnection: Long = Long.MaxValue,
-  clientIPLookupSpecs: Seq[HttpServerOptions.ClientIPLookupSpec] = Seq(HttpServerOptions.defaultClientIPLookupSpec)
-) {
-  require(maxRequestsPerConnection > 0, "maxRequestsPerConnection must be > 0")
+trait HttpServerOptions {
+  def requestIdResponseHeader: Option[String]
+  def maxRequestsPerConnection: Long
+  def clientIPLookupSpecs: Seq[HttpServerOptions.ClientIPLookupSpec]
+
+  def withRequestIdResponseHeader(value: Option[String]): HttpServerOptions
+  def withMaxRequestsPerConnection(value: Long): HttpServerOptions
+  def withClientIPLookupSpecs(value: Seq[HttpServerOptions.ClientIPLookupSpec]): HttpServerOptions
 }

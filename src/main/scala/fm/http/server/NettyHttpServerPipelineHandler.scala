@@ -132,9 +132,11 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     val version: HttpVersion = nettyRequest.protocolVersion()
     
     // TODO: handle HEAD requests where we don't want to send back the body
-    response.recover { case ex: Throwable =>
-      logger.error("Caught Exception waiting for Response Future - Sending Error Response", ex)
-      makeErrorResponse(Status.INTERNAL_SERVER_ERROR)
+    response.recover {
+      case ex: LinkedHttpContentReader.MaxLengthException => Response.plain(Status.REQUEST_ENTITY_TOO_LARGE, "413 Request Entity Too Large")
+      case ex: Throwable =>
+        logger.error("Caught Exception waiting for Response Future - Sending Error Response", ex)
+        makeErrorResponse(Status.INTERNAL_SERVER_ERROR)
     }.foreach { res: Response => res match {
       case full:  FullResponse             => sendFullResponse(request, prepareResponse(request, full.toFullHttpResponse(version), wantKeepAlive))
       case async: AsyncResponse            => sendAsyncResponse(request, prepareResponse(request, async.toHttpResponse(version), wantKeepAlive), async.head)
@@ -161,8 +163,9 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     val remoteIp: IP = remoteIPForRequest(request)
      
     val is100ContinueExpected: Boolean = HttpUtil.is100ContinueExpected(request)
+    val contentLength: Option[Long] = Try { HttpUtil.getContentLength(request) }.toOption
     
-    val contentReader: LinkedHttpContentReader = LinkedHttpContentReader(is100ContinueExpected, content)
+    val contentReader: LinkedHttpContentReader = LinkedHttpContentReader(is100ContinueExpected, contentLength, content)
     val r: Request = Request(remoteIp, request, contentReader)
     
     val future: Future[Response] = router.lookup(r) match {
@@ -170,6 +173,7 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
         try {
           handler(r)
         } catch {
+          case ex: LinkedHttpContentReader.MaxLengthException => Future.failed(ex)
           case ex: Exception =>
             logger.error(s"Caught exception handling request: request", ex)
             Future.successful(makeErrorResponse(Status.INTERNAL_SERVER_ERROR))
@@ -444,8 +448,10 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     if (null != contentBuilder) contentBuilder += cause
     ctx.close()
   }
-  
-  private def trace(name: String, ex: Throwable = null)(implicit ctx: ChannelHandlerContext): Unit = {
+
+  private def trace(name: String)(implicit ctx: ChannelHandlerContext): Unit = trace(name, null)
+
+  private def trace(name: String, ex: Throwable)(implicit ctx: ChannelHandlerContext): Unit = {
     if (logger.isTraceEnabled) logger.trace(s"$id - $name - ${ctx.channel}", ex)
   }
 }
