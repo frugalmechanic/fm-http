@@ -40,7 +40,7 @@ fork in Test := true
 libraryDependencies ++= Seq(
   "com.frugalmechanic" %% "scala-optparse" % "1.1.2",
   "com.frugalmechanic" %% "fm-common" % "0.27.0",
-  "com.frugalmechanic" %% "fm-lazyseq" % "0.10.0" % "test"
+  "com.frugalmechanic" %% "fm-lazyseq" % "0.11.0" % "test"
 )
 
 val nettyVersion: String = "4.1.32.Final"
