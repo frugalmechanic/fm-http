@@ -156,7 +156,7 @@ object MimeTypes {
     DOCX        -> "docx",
     PPT         -> "ppt",
     PPTX        -> "pptx",
-    VSD         -> "vsd",
+    VSD         -> "vsd"
   ).toUniqueHashMap
 
   // type -> charset
