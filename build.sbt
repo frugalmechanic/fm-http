@@ -4,7 +4,7 @@ name := "fm-http"
 
 description := "Async Http Client & Server for Scala"
 
-scalaVersion := "2.12.7"
+scalaVersion := "2.12.8"
 
 crossScalaVersions := Seq("2.11.11", "2.12.7")
 
