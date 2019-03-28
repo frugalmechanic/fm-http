@@ -68,8 +68,12 @@ object RouteMatchers {
   
   final case class RichPathMatchingRegex(regex: Regex) {
     def unapplySeq(target: Any): Option[List[String]] = target match {
+      // This is for matching directly against a Request
+      case request: Request => regex.unapplySeq(request.path)
+
+      // This is for matching directly against a path (which will usually be via something like GET(...) or POST(...)
       case path: String => regex.unapplySeq(path)
-      case GET(path) => regex.unapplySeq(path)
+
       case _ => None
     } 
   }

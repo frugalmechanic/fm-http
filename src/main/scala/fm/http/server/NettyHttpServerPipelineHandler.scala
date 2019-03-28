@@ -69,6 +69,8 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     // Allow the first message to be read
     ctx.read()
 
+    // JavaDocs for ChannelGroup (https://netty.io/4.1/api/io/netty/channel/group/ChannelGroup.html) state:
+    // "A closed Channel is automatically removed from the collection, so that you don't need to worry about the life cycle of the added Channel."
     channelGroup.add(ctx.channel())
     
     super.channelActive(ctx)

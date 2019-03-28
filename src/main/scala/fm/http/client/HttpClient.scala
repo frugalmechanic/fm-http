@@ -86,12 +86,17 @@ abstract class HttpClient extends Closeable {
   def defaultHeaders: Headers
   def defaultResponseTimeout: Duration
   def defaultCharset: Charset
-  
+
+  /**
+    * Execute a Request returning the AsyncResponse using the defaultResponseTimeout
+    */
+  final def execute(r: Request): Future[AsyncResponse] = execute(r, defaultResponseTimeout)
+
   /**
    * Execute a Request returning the AsyncResponse
    */
   def execute(r: Request, timeout: Duration): Future[AsyncResponse]
-  
+
   def close(): Unit
   
   /** Return an HttpClient that will use Basic auth for any calls made by it */
