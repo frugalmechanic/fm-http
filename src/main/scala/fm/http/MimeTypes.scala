@@ -21,29 +21,64 @@ import java.nio.charset.{Charset, StandardCharsets}
 
 object MimeTypes {
   // Images
+  val BMP         = "image/bmp"
   val GIF         = "image/gif"
+  val ICO         = "image/vnd.microsoft.icon"
   val JPEG        = "image/jpeg"
   val PNG         = "image/png"
+  val SVG         = "image/svg+xml"
   val TIFF        = "image/tiff"
+  val WEBP        = "image/webp"
 
   // Text
   val JAVASCRIPT  = "application/javascript"
   val JSON        = "application/json"
+  val JSON_LD     = "application/ld+json"
+  val CAL         = "text/calendar"
   val CSS         = "text/css"
   val CSV         = "text/csv"
   val HTML        = "text/html"
+  val XHTML       = "application/xhtml+xml"
   val PLAIN       = "text/plain"
+  val RTF         = "application/rtf"
   val XML         = "application/xml"
 
   // Other
+  val `7ZIP`      = "application/x-7z-compressed"
+  val BZIP        = "application/x-bzip"
+  val BZIP2       = "application/x-bzip2"
   val GZIP        = "application/x-gzip"
+  val RAR         = "application/x-rar-compressed"
   val ZIP         = "application/zip"
   val X_COMPONENT = "text/x-component"
   val RSS         = "application/rss+xml"
-  val SVG         = "image/svg+xml"
   val PDF         = "application/pdf"
   val BINARY      = "application/octet-stream"
+  val SWF         = "application/x-shockwave-flash"
   val WOFF        = "application/font-woff"
+
+  // Audio
+  val AIFF        = "audio/x-aiff"
+  val AU          = "audio/basic"
+  val M3U         = "audio/x-mpegurl"
+  val MIDI        = "audio/x-midi"
+  val MP3         = "audio/mpeg"
+  val OGG         = "audio/ogg"
+  val WAV         = "audio/x-wav"
+  val WEBA        = "audio/webm"
+
+  // Video
+  val `3GP`       = "video/3gpp"
+  val `3G2`       = "video/3gpp2"
+  val AVI         = "video/x-msvideo"
+  val FLV         = "video/x-flv"
+  val MOV         = "video/quicktime"
+  val MP4         = "video/mp4"
+  val M3U8        = "application/x-mpegURL"
+  val OGV         = "video/ogg"
+  val TS          = "video/MP2T"
+  val WMV         = "video/x-ms-wmv"
+  val WEBV        = "video/webm"
 
   // Microsoft Office Types
   val XLS         = "application/vnd.ms-excel"
@@ -51,28 +86,66 @@ object MimeTypes {
   val XLSM        = "application/vnd.ms-excel.sheet.macroEnabled.12"
   val DOC         = "application/msword"
   val DOCX        = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  val PPT         = "application/vnd.ms-powerpoint"
+  val PPTX        = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  val VSD         = "application/vnd.visio"
 
 
   // type -> extensions
   val mimeTypeToExtension = Vector[(String,Seq[String])](
     // Images
+    BMP         -> "bmp",
     GIF         -> "gif",
+    ICO         -> "ico",
     JPEG        -> Seq("jpg","jpeg"),
     PNG         -> "png",
+    SVG         -> "svg",
     TIFF        -> Seq("tif", "tiff"),
+    WEBP        -> "webp",
     // Text
     JAVASCRIPT  -> "js",
+    JSON        -> "json",
+    JSON_LD     -> "jsonld",
+    CAL         -> "ics",
     CSS         -> "css",
     CSV         -> "csv",
     HTML        -> Seq("html","htm"),
+    XHTML       -> Seq("xhtml"),
     PLAIN       -> Seq("txt","tsv"),
+    RTF         -> "rtf",
     XML         -> "xml",
+    // Audio
+    AU          -> Seq("au", "snd"),
+    AIFF        -> Seq("aif", "aifc", "aiff"),
+    M3U         -> "m3u",
+    MIDI        -> Seq("mid", "rmi"),
+    MP3         -> "mp3",
+    OGG         -> Seq("ogg", "oga", "opus", "spx"),
+    WAV         -> "wav",
+    WEBA        -> "weba",
+    // Video
+    `3GP`       -> "3gp",
+    `3G2`       -> "3g2",
+    AVI         -> "avi",
+    FLV         -> "flv",
+    M3U8        -> "m3u8",
+    MOV         -> "mov",
+    MP4         -> "mp4",
+    OGV         -> "ogv",
+    TS          -> "ts",
+    WMV         -> "wmv",
+    WEBV        -> "webv",
     // Other
+    `7ZIP`      -> "7z",
+    BZIP        -> "bz",
+    BZIP2       -> "bz2",
     GZIP        -> "gz",
+    RAR         -> "rar",
     ZIP         -> "zip",
     X_COMPONENT -> "htc",
-    SVG         -> "svg",
+    RSS         -> "rss",
     PDF         -> "pdf",
+    SWF         -> "swf",
     WOFF        -> "woff",
     BINARY      -> "ttf",
     // MS Office
@@ -80,7 +153,10 @@ object MimeTypes {
     XLSX        -> "xlsx",
     XLSM        -> "xlsm",
     DOC         -> "doc",
-    DOCX        -> "docx"
+    DOCX        -> "docx",
+    PPT         -> "ppt",
+    PPTX        -> "pptx",
+    VSD         -> "vsd",
   ).toUniqueHashMap
 
   // type -> charset
