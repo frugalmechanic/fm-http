@@ -242,7 +242,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   def accessControlAllowOrigin: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_ALLOW_ORIGIN)
   def accessControlExposeHeaders: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_EXPOSE_HEADERS)
   def accessControlMaxAge: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_MAX_AGE)
-  def accessControlRequestHEaders: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_REQUEST_HEADERS)
+  def accessControlRequestHeaders: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_REQUEST_HEADERS)
   def accessControlRequestMethod: Option[String] = get(HttpHeaderNames.ACCESS_CONTROL_REQUEST_METHOD)
   def age: Option[Long] = getLong(HttpHeaderNames.AGE)
   def allow: Option[String] = get(HttpHeaderNames.ALLOW)
@@ -507,8 +507,8 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   def accessControlMaxAge_=(v: String): Unit = set(HttpHeaderNames.ACCESS_CONTROL_MAX_AGE, v)
   def accessControlMaxAge_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCESS_CONTROL_MAX_AGE, v)
 
-  def accessControlRequestHEaders_=(v: String): Unit = set(HttpHeaderNames.ACCESS_CONTROL_REQUEST_HEADERS, v)
-  def accessControlRequestHEaders_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCESS_CONTROL_REQUEST_HEADERS, v)
+  def accessControlRequestHeaders_=(v: String): Unit = set(HttpHeaderNames.ACCESS_CONTROL_REQUEST_HEADERS, v)
+  def accessControlRequestHeaders_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCESS_CONTROL_REQUEST_HEADERS, v)
 
   def accessControlRequestMethod_=(v: String): Unit = set(HttpHeaderNames.ACCESS_CONTROL_REQUEST_METHOD, v)
   def accessControlRequestMethod_=(v: Option[String]): Unit = set(HttpHeaderNames.ACCESS_CONTROL_REQUEST_METHOD, v)
