@@ -45,6 +45,15 @@ abstract class HttpServerApp extends Logging {
   protected def requestIdResponseHeader: Option[String] = None
 
   protected def clientIPLookupSpecs: Seq[HttpServerOptions.ClientIPLookupSpec] = Seq(HttpServerOptions.defaultClientIPLookupSpec)
+
+  /** HttpRequestDecoder maxInitialLineLength (defaults to 4096) */
+  protected def maxInitialLineLength: Int = HttpServerOptions.defaultMaxInitialLineLength
+
+  /** HttpRequestDecoder maxHeaderSize (defaults to 8192) */
+  protected def maxHeaderSize: Int = HttpServerOptions.defaultMaxHeaderSize
+
+  /** HttpRequestDecoder maxChunkSize (defaults to 8192) */
+  protected def maxChunkSize: Int = HttpServerOptions.defaultMaxChunkSize
   
   private[this] val DETATCH_STRING: String = "\u0000"*4 // 4 NULL Characters
   private[this] val IS_CHILD_PROPERTY_KEY: String = "fm.webapp.is_child_process"
@@ -114,7 +123,10 @@ abstract class HttpServerApp extends Logging {
   private def doRun(ports: Set[Int], detatch: Boolean, emailLogging: Boolean): Unit = {
     val options: HttpServerOptions = HttpServerOptions(
       requestIdResponseHeader = requestIdResponseHeader,
-      clientIPLookupSpecs = clientIPLookupSpecs
+      clientIPLookupSpecs = clientIPLookupSpecs,
+      maxInitialLineLength = maxInitialLineLength,
+      maxHeaderSize = maxHeaderSize,
+      maxChunkSize = maxChunkSize
     )
 
     // Figure out which port we should listen on    

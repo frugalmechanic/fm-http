@@ -14,6 +14,10 @@ object HttpServerOptions {
     valueToUse = ClientIPHeaderValueToUse.Last
   )
 
+  val defaultMaxInitialLineLength: Int = 4096
+  val defaultMaxHeaderSize: Int = 8192
+  val defaultMaxChunkSize: Int = 8192
+
   /**
    * This allows you to override the Request.remoteIp with an IP Address from an HTTP header field
    *
@@ -85,11 +89,17 @@ object HttpServerOptions {
  * @param requestIdResponseHeader Set this to include the Request.id in the response headers
  * @param maxRequestsPerConnection The maximum number of requests that we will process per connection
  * @param clientIPLookupSpecs How to lookup the client IP from headers (in priority order)
+ * @param maxInitialLineLength HttpRequestDecoder maxInitialLineLength (defaults to 4096)
+ * @param maxHeaderSize HttpRequestDecoder maxHeaderSize (defaults to 8192)
+ * @param maxChunkSize HttpRequestDecoder maxChunkSize (defaults to 8192)
  */
 final case class HttpServerOptions(
   requestIdResponseHeader: Option[String],
   maxRequestsPerConnection: Long = Long.MaxValue,
-  clientIPLookupSpecs: Seq[HttpServerOptions.ClientIPLookupSpec] = Seq(HttpServerOptions.defaultClientIPLookupSpec)
+  clientIPLookupSpecs: Seq[HttpServerOptions.ClientIPLookupSpec] = Seq(HttpServerOptions.defaultClientIPLookupSpec),
+  maxInitialLineLength: Int = HttpServerOptions.defaultMaxInitialLineLength,
+  maxHeaderSize: Int = HttpServerOptions.defaultMaxHeaderSize,
+  maxChunkSize: Int = HttpServerOptions.defaultMaxChunkSize
 ) {
   require(maxRequestsPerConnection > 0, "maxRequestsPerConnection must be > 0")
 }

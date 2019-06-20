@@ -103,7 +103,7 @@ final case class HttpServer (
        def initChannel(ch: SocketChannel): Unit = {
          val p: ChannelPipeline = ch.pipeline()
          
-         p.addLast("decoder",       new HttpRequestDecoder())
+         p.addLast("decoder",       new HttpRequestDecoder(serverOptions.maxInitialLineLength, serverOptions.maxHeaderSize, serverOptions.maxChunkSize))
          p.addLast("encoder",       new HttpResponseEncoder())
          p.addLast("compressor",    new NettyContentCompressor())
          p.addLast("chunkedWriter", new ChunkedWriteHandler())
