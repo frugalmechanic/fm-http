@@ -123,6 +123,8 @@ final case class DigestAuth(
   
   private[this] val secureRandom: SecureRandom = new SecureRandom()
 
+  if (logger.isDebugEnabled) logger.debug(s"DigestAuth: realm: $realm, users: $users")
+
   protected def requireAuthImpl(request: Request)(action: => Future[Response]): Future[Response] = try {
     if (isValid(request)) action else response(isStale = false)
   } catch {
@@ -188,15 +190,24 @@ final case class DigestAuth(
     
     // Some basic checks to ignore any obviously invalid requests
     // Note - the stripTrailing("?") exists because Netty seems to convert /foo? to /foo in HttpRequest
-    if (!users.contains(pUsername) || realm != pRealm || pUri.stripTrailing("?") != request.uri.stripTrailing("?")) return false
+    if (!users.contains(pUsername) || realm != pRealm || pUri.stripTrailing("?") != request.uri.stripTrailing("?")) {
+      if (logger.isDebugEnabled) logger.debug(s"Invalid Auth.  user, realm or uri mismatch.  user: $pUsername, realm: $realm, pRealm: $pRealm, pUri: $pUri, request.uri: ${request.uri}")
+      return false
+    }
     
     // Verify the opaque value was encrypted/signed by us
-    val opaqueMsg: String = DigestOpaqueCrypto.tryDecryptBase64String(pOpaque).getOrElse{ return false }
+    val opaqueMsg: String = DigestOpaqueCrypto.tryDecryptBase64String(pOpaque).getOrElse{
+      if (logger.isDebugEnabled) logger.debug("Auth Failed.  Cannot decode pOpaque")
+      return false
+    }
     
     val Array(time,nonce) = opaqueMsg.split(':')
     
     // If the nonce doesn't match then return
-    if (nonce != pNonce) return false
+    if (nonce != pNonce) {
+      if (logger.isDebugEnabled) logger.debug(s"Auth Failed.  nonce mismatch.  nonce: $nonce, pNonce: $pNonce")
+      return false
+    }
     
     // Force re-authorization after a certain amount of time
     val expirationTimeMillis = time.toLong+(DigestExpirationSeconds*1000)
