@@ -197,17 +197,14 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
     }
   }
   
-  private def sendAsyncRequest(promise: Promise[AsyncResponse], request: HttpRequest, head: LinkedHttpContent, channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {
+  private def sendAsyncRequest(promise: Promise[AsyncResponse], request: HttpRequest, head: Future[Option[LinkedHttpContent]], channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {
     trace("sendAsyncRequest")
     
     // We don't know the size in advance since we'll be using: Transfer-Encoding: chunked
     request.headers().remove(HttpHeaderNames.CONTENT_LENGTH)
     HttpUtil.setTransferEncodingChunked(request, true)
     
-    ctx.writeAndFlush(request).onComplete{
-      case Success(_) => sendChunk(promise, Some(head), channelPromise)
-      case Failure(ex) => fail(promise, ex, channelPromise)
-    }
+    ctx.writeAndFlush(request).onComplete{ onChunkSendComplete(promise, _, head, channelPromise) }
   }
   
   private def sendChunk(promise: Promise[AsyncResponse], chunk: Try[Option[LinkedHttpContent]], channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {

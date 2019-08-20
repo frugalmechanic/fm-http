@@ -21,6 +21,7 @@ import io.netty.handler.codec.http._
 import io.netty.util.CharsetUtil
 import fm.http.{Cookie, _}
 import scala.collection.mutable.Builder
+import scala.concurrent.Future
 
 object Response {
   //
@@ -108,8 +109,10 @@ object Response {
   def Ok(body: String): FullResponse = FullResponse(Status.OK, Headers.empty, Unpooled.copiedBuffer(body, CharsetUtil.UTF_8))
   def Ok(headers: Headers, body: String): FullResponse = FullResponse(Status.OK, headers, Unpooled.copiedBuffer(body, CharsetUtil.UTF_8))
   def Ok(headers: Headers, buf: ByteBuf): FullResponse = FullResponse(Status.OK, headers, buf)
-  def Ok(head: LinkedHttpContent): AsyncResponse = AsyncResponse(Status.OK, Headers.empty, head)
-  def Ok(headers: Headers, head: LinkedHttpContent): AsyncResponse = AsyncResponse(Status.OK, headers, head)
+  def Ok(head: LinkedHttpContent): AsyncResponse = AsyncResponse(Status.OK, Headers.empty, Future.successful(Option(head)))
+  def Ok(head: Future[Option[LinkedHttpContent]]): AsyncResponse = AsyncResponse(Status.OK, Headers.empty, head)
+  def Ok(headers: Headers, head: LinkedHttpContent): AsyncResponse = AsyncResponse(Status.OK, headers, Future.successful(Option(head)))
+  def Ok(headers: Headers, head: Future[Option[LinkedHttpContent]]): AsyncResponse = AsyncResponse(Status.OK, headers, head)
   def Ok(headers: Headers, file: File): FileResponse = FileResponse(Status.OK, headers, file)
   def Ok(headers: Headers, file: RandomAccessFile): RandomAccessFileResponse = RandomAccessFileResponse(Status.OK, headers, file)
   
@@ -184,7 +187,7 @@ final case class FullResponse(status: Status, headers: Headers = Headers.empty, 
 /**
  * This represents a chunked HTTP Response with headers and the first chunk along with a pointer to the next chunk
  */
-final case class AsyncResponse(status: Status, headers: Headers, head: LinkedHttpContent) extends Response with AsyncMessage {
+final case class AsyncResponse(status: Status, headers: Headers, head: Future[Option[LinkedHttpContent]]) extends Response with AsyncMessage {
   def toHttpResponse(version: HttpVersion): HttpResponse = {
     val r = new DefaultHttpResponse(version, status.toHttpResponseStatus)
     r.headers().add(headers.nettyHeaders)

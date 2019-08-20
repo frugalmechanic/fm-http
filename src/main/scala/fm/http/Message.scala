@@ -17,6 +17,7 @@ package fm.http
 
 import io.netty.buffer.ByteBuf
 import java.io.{File, InputStream}
+import scala.concurrent.Future
 
 /**
  * Represents an HTTP Message (either a Request or Response)
@@ -32,7 +33,7 @@ trait FullMessage extends Message {
 
 trait AsyncMessage extends Message {
   /** The head of the body */
-  def head: LinkedHttpContent
+  def head: Future[Option[LinkedHttpContent]]
 }
 
 trait FileMessage extends Message {

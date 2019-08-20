@@ -360,21 +360,21 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     
     ctx.writeAndFlush(response).onComplete{ onResponseComplete(request, _, HttpUtil.isKeepAlive(response)) }
   }
-  
+
   /**
    * For sending a chunked http response
    */
-  private def sendAsyncResponse(request: Request, response: HttpResponse, head: LinkedHttpContent)(implicit ctx: ChannelHandlerContext): Unit = {
+  private def sendAsyncResponse(request: Request, response: HttpResponse, head: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext): Unit = {
     trace("sendAsyncResponse")
-    
-    // We don't know the size in advance since we'll be using: Transfer-Encoding: chunked 
+
+    // We don't know the size in advance since we'll be using: Transfer-Encoding: chunked
     response.headers().remove(HttpHeaderNames.CONTENT_LENGTH)
     HttpUtil.setTransferEncodingChunked(response, true)
-    
-    // The ChannelFuture return from ctx.write(...) doesn't complete unless you eventually call flush.
-    // So we write the response headers and immediately writeAndFlush the first chunk.
-    ctx.write(response)
-    sendChunk(request, Some(head), HttpUtil.isKeepAlive(response))
+
+    // We writeAndFlush the response headers to get those back to the client as soon as they are ready.
+    // Note: The ChannelFuture return from ctx.write(...) doesn't complete unless you eventually call flush.  In this
+    //       case we just use ctx.writeAndFlush(...).
+    ctx.writeAndFlush(response).onComplete{ onChunkSendComplete(request, _, head, HttpUtil.isKeepAlive(response)) }
   }
   
   /**

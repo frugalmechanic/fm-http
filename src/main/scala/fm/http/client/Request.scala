@@ -20,8 +20,9 @@ import fm.common.Implicits._
 import fm.http._
 import java.io.File
 import io.netty.buffer.{ByteBuf, Unpooled}
-import io.netty.handler.codec.http.{DefaultFullHttpRequest, DefaultHttpRequest, FullHttpRequest, HttpMessage, HttpRequest, HttpMethod, HttpVersion}
+import io.netty.handler.codec.http.{DefaultFullHttpRequest, DefaultHttpRequest, FullHttpRequest, HttpMessage, HttpMethod, HttpRequest, HttpVersion}
 import io.netty.util.CharsetUtil
+import scala.concurrent.Future
 
 object Request {
   def Get(url: String, headers: Headers): FullRequest = FullRequest(HttpMethod.GET, URL(url), headers)
@@ -32,7 +33,8 @@ object Request {
   def Post(url: String, headers: Headers, data: String): FullRequest = FullRequest(HttpMethod.POST, URL(url), headers, Unpooled.copiedBuffer(data, CharsetUtil.UTF_8))
   def Post(url: String, headers: Headers, data: Array[Byte]): FullRequest = FullRequest(HttpMethod.POST, URL(url), headers, Unpooled.copiedBuffer(data))
   def Post(url: String, headers: Headers, buf: ByteBuf): FullRequest = FullRequest(HttpMethod.POST, URL(url), headers, buf)
-  def Post(url: String, headers: Headers, head: LinkedHttpContent): AsyncRequest = AsyncRequest(HttpMethod.POST, URL(url), headers, head)
+  def Post(url: String, headers: Headers, head: LinkedHttpContent): AsyncRequest = AsyncRequest(HttpMethod.POST, URL(url), headers, Future.successful(Option(head)))
+  def Post(url: String, headers: Headers, head: Future[Option[LinkedHttpContent]]): AsyncRequest = AsyncRequest(HttpMethod.POST, URL(url), headers, head)
   def Post(url: String, headers: Headers, file: File): FileRequest = FileRequest(HttpMethod.POST, URL(url), headers, file)
 }
 
@@ -73,7 +75,7 @@ final case class FullRequest(method: HttpMethod, url: URL, headers: Headers = He
 /**
  * This represents a chunked HTTP Request with headers and the first chunk along with a pointer to the next chunk
  */
-final case class AsyncRequest(method: HttpMethod, url: URL, headers: Headers, head: LinkedHttpContent) extends Request with AsyncMessage {
+final case class AsyncRequest(method: HttpMethod, url: URL, headers: Headers, head: Future[Option[LinkedHttpContent]]) extends Request with AsyncMessage {
   def toHttpRequest(version: HttpVersion, uri: String): HttpRequest = {
     initHeaders(new DefaultHttpRequest(version, method, uri))
   }
