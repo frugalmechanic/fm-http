@@ -189,6 +189,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
     
     // Set the Content-Length since this is a full response which should have a known size
     HttpUtil.setContentLength(request, request.content.readableBytes())
+    HttpUtil.setTransferEncodingChunked(request, false)
     
     ctx.writeAndFlush(request).onComplete{
       case Success(_) => channelPromise.setSuccess()
@@ -254,6 +255,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
     
     // Set the Content-Length since we know the length of the file
     HttpUtil.setContentLength(request, length)
+    HttpUtil.setTransferEncodingChunked(request, false)
     
     ctx.write(request)
     ctx.writeAndFlush(new DefaultFileRegion(raf.getChannel, 0, length)).flatMap{ _ => 

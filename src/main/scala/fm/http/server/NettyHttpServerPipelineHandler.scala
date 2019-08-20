@@ -268,10 +268,22 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
    */
   private def sendInputStreamResponse(request: Request, response: HttpResponse, input: InputStream, length: Option[Long])(implicit ctx: ChannelHandlerContext): Unit = {
     trace("sendInputStreamResponse")
-    
+
     // Set the Content-Length if we know the length of the InputStream
-    if (includeContentLength(request, response)) length.foreach { HttpUtil.setContentLength(response, _) }
-    
+    if (includeContentLength(request, response)) {
+      length match {
+        case Some(len) =>
+          HttpUtil.setContentLength(response, len)
+          HttpUtil.setTransferEncodingChunked(response, false)
+
+        case None =>
+          // Length is not known so set chunked
+          response.headers().remove(HttpHeaderNames.CONTENT_LENGTH)
+          HttpUtil.setTransferEncodingChunked(response, true)
+      }
+
+    }
+
     // The NettyContentCompressor can't handle a ChunkedFile (which is a ChunkedInput[ByteBuf]) 
     // so we wrap it in HttpContentChunkedInput to turn it into a ChunkedInput[HttpContent]
     val obj: HttpContentChunkedInput = HttpContentChunkedInput(new ChunkedStream(input))
@@ -305,7 +317,10 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     val length: Long = raf.length()
 
     // Set the Content-Length since we know the length of the file
-    if (includeContentLength(request, response)) HttpUtil.setContentLength(response, length)
+    if (includeContentLength(request, response)) {
+      HttpUtil.setContentLength(response, length)
+      HttpUtil.setTransferEncodingChunked(response, false)
+    }
 
     // If we might GZIP/DEFLATE this content then we can't use sendfile since it would
     // bypass the NettyContentCompressor which would have already modified the Content-Encoding
@@ -336,9 +351,12 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
    */
   private def sendFullResponse(request: Request, response: FullHttpResponse)(implicit ctx: ChannelHandlerContext): Unit = {
     trace("sendFullResponse")
-    
+
     // Set the Content-Length since this is a full response which should have a known size
-    if (includeContentLength(request, response)) HttpUtil.setContentLength(response, response.content.readableBytes())
+    if (includeContentLength(request, response)) {
+      HttpUtil.setContentLength(response, response.content.readableBytes())
+      HttpUtil.setTransferEncodingChunked(response, false)
+    }
     
     ctx.writeAndFlush(response).onComplete{ onResponseComplete(request, _, HttpUtil.isKeepAlive(response)) }
   }
