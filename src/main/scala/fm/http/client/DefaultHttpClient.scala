@@ -145,7 +145,8 @@ final case class DefaultHttpClient(
   defaultCharset: Charset, // The default charset to use (if none is specified in the response) when converting responses to strings
   followRedirects: Boolean, // Should 301/302 redirects be followed for GET or HEAD requests?
   maxRedirectCount: Int, // The maximum number of 301/302 redirects to follow for a GET or HEAD request
-  disableSSLCertVerification: Boolean // Do not verify SSL certs (SHOULD NOT USE IN PRODUCTION)
+  disableSSLCertVerification: Boolean, // Do not verify SSL certs (SHOULD NOT USE IN PRODUCTION)
+  autoDecompress: Boolean
 ) extends HttpClient with Logging {
   import DefaultHttpClient.{EndPoint, TimeoutTask, workerGroup}
   
@@ -356,15 +357,19 @@ final case class DefaultHttpClient(
          val p: ChannelPipeline = ch.pipeline()
 
          // If we are using a proxy then make sure that gets added first
-         proxy.foreach{ options: ProxyOptions => p.addFirst(options.makeChannelHandler) }
+         proxy.foreach { options: ProxyOptions => p.addFirst(options.makeChannelHandler) }
 
          if (ssl) {
            p.addLast("ssl", sslCtx.newHandler(ch.alloc(), host, port))
          }
-         
-         p.addLast("httpcodec",     new HttpClientCodec())
+
+         p.addLast("httpcodec", new HttpClientCodec())
          //p.addLast("decompressor",  new NettyContentDecompressor())
-         p.addLast("decompressor",  new io.netty.handler.codec.http.HttpContentDecompressor())
+
+         if (autoDecompress) {
+          p.addLast("decompressor", new io.netty.handler.codec.http.HttpContentDecompressor())
+         }
+
          //p.addLast("chunkedWriter", new ChunkedWriteHandler())
          p.addLast("handler",       new NettyHttpClientPipelineHandler(allChannels, executionContext))
          
