@@ -38,7 +38,7 @@ scalacOptions in (Compile, doc) --= fatalWarnings
 fork in Test := true
 
 libraryDependencies ++= Seq(
-  "com.frugalmechanic" %% "scala-optparse" % "1.1.2",
+  "com.frugalmechanic" %% "scala-optparse" % "1.1.3",
   "com.frugalmechanic" %% "fm-common" % "0.35.0",
   "com.frugalmechanic" %% "fm-lazyseq" % "0.12.0" % "test"
 )
