@@ -15,7 +15,7 @@
  */
 package fm.http.client
 
-import io.netty.handler.codec.http.{HttpResponse, HttpUtil, HttpVersion}
+import io.netty.handler.codec.http.{HttpMessage, HttpResponse, HttpResponseDecoder, HttpUtil, HttpVersion}
 import java.io.Closeable
 import java.nio.charset.{Charset, IllegalCharsetNameException}
 import scala.concurrent.{ExecutionContext, Future, Promise}
@@ -27,6 +27,13 @@ object Response {
   def apply(response: HttpResponse, content: LinkedHttpContentReader)(implicit execution: ExecutionContext): AsyncResponse = new AsyncResponse(response, content)
 
   val CharsetRegex = """(?i)^\s*?.*?\s*?charset\s*?=\s*?(.*?)$""".r
+
+  // Semi-hack to access this protected helper
+  private object Decoder extends HttpResponseDecoder {
+    def isContentAlwaysEmptyWrapper(msg: HttpMessage): Boolean = isContentAlwaysEmpty(msg)
+  }
+
+  def isContentAlwaysEmpty(msg: HttpMessage): Boolean = Decoder.isContentAlwaysEmptyWrapper(msg)
 }
 
 sealed abstract class Response(response: HttpResponse) extends Closeable {
@@ -35,7 +42,9 @@ sealed abstract class Response(response: HttpResponse) extends Closeable {
   val version: HttpVersion = response.protocolVersion()
   
   val headers: ImmutableHeaders = ImmutableHeaders(response.headers)
-  
+
+  def isContentAlwaysEmpty: Boolean = Response.isContentAlwaysEmpty(response)
+
   /**
    * Any Set-Cookie Headers are decoded into Cookies
    */
@@ -92,10 +101,20 @@ final class FullResponse(response: HttpResponse, val body: Array[Byte]) extends 
 }
 
 object AsyncResponse {
+  // https://tools.ietf.org/html/rfc7230#section-3.3.3
+  //   7.  Otherwise, this is a response message without a declared message
+  //       body length, so the message body length is determined by the
+  //       number of octets received prior to the server closing the
+  //       connection.
   private def expectBodyContent(response: HttpResponse): Boolean = {
-    val hasContentLength: Boolean = HttpUtil.getContentLength(response, -1) > 0
+    if (Response.isContentAlwaysEmpty(response)) return false
+
+    val contentLength: Long = HttpUtil.getContentLength(response, -1L)
+    val hasRequiredContentLength: Boolean = contentLength > 0L || (!HttpUtil.isKeepAlive(response) && contentLength === -1L)
+
     val isChunked: Boolean = HttpUtil.isTransferEncodingChunked(response)
-    hasContentLength || isChunked
+
+    hasRequiredContentLength || isChunked
   }
 }
 
@@ -123,7 +142,7 @@ final class AsyncResponse (response: HttpResponse, content: LinkedHttpContentRea
   
   private def requireEmptyContent(): Unit = {
     content.foldLeft(false){ (isSet, buf) =>
-      if (isSet) logger.error("Expected EmptyContent for request: "+this)
+      if (isSet) logger.error("Expected EmptyContent for response: "+this)
       true
     }
   }
