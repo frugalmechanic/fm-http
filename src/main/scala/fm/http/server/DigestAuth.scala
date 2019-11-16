@@ -80,31 +80,22 @@ object DigestAuth {
  *
  * Mostly used the Wikipedia pages as references:
  * http://en.wikipedia.org/wiki/Digest_access_authentication
- * 
+ *
  * NOTE: Use at your own risk.  We make no claim that any of this Crypto code is correct.
+ *
+ * @param realm               The realm to use
+ * @param users               Map of Usernames -> (Plaintext passwords or hashes based on the digestHash method in the DigestAuth object)
+ * @param noncePrefix         A value to prefix to the nonce.  Can be anything.
+ * @param base64EncryptionKey The Base64 encoded 256-bit encryption key to use for encrypting the opaque data. You
+ *                            can use fm.common.Crypto.makeRandomKeyBase64() to generate a key.
+ * @param expirationSeconds   How long is the nonce good for?  After this amount of seconds the client's browser
+ *                            will automatically re-authenticate using the updated nonce from the server.
  */
 final case class DigestAuth(
-    /**
-     * The realm to use
-     */
     realm: String,
-    /**
-     * Map of Usernames -> (Plaintext passwords or hashes based on the digestHash method in the DigestAuth object)
-     */
     users: Map[String, String],
-    /**
-     * A value to prefix to the nonce.  Can be anything.
-     */
     noncePrefix: String,
-    /** 
-     * The Base64 encoded 256-bit encryption key to use for encrypting the opaque data. You
-     * can use fm.common.Crypto.makeRandomKeyBase64() to generate a key.
-     */
     base64EncryptionKey: String,
-    /**
-     * How long is the nonce good for?  After this amount of seconds the client's browser
-     * will automatically re-authenticate using the updated nonce from the server.
-     */
     expirationSeconds: Int = 300 // 5 minutes
 ) extends Auth with Logging {
   

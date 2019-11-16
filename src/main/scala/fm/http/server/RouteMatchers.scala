@@ -31,16 +31,16 @@ object RouteMatchers {
   implicit class RichPathMatchers(val sc: StringContext) extends AnyVal {
     /**
      * This support simple patterns of the form:
-     *    /path/$part   ==>  Will match /path/foo, /path/bar, etc...
-     *    /path/$part*  ==>  Will match /path/to/somewhere, /path/foo/bar, /path/foo, etc...
+     *    /path/\$part   ==>  Will match /path/foo, /path/bar, etc...
+     *    /path/\$part*  ==>  Will match /path/to/somewhere, /path/foo/bar, /path/foo, etc...
      *    
      * By default a variable will match everything up to the next / character.
      * If the * is used then the / character is also included.
      * 
      * Other simple regex operators are also now supported:
      * 
-     * 		/path/$part/?  ==> Allow an optional trailing slash
-     * 		/path/$part.(gif|jpg) ==> Allows either gif or jpg extension
+     * 		/path/\$part/?  ==> Allow an optional trailing slash
+     * 		/path/\$part.(gif|jpg) ==> Allows either gif or jpg extension
      * 
      * These are operators are supported:  ( ) | ?
      * 
@@ -49,9 +49,9 @@ object RouteMatchers {
      * However those operators must be self-contained within each part of the string.
      * This means you can't have something like:
      * 
-     * 		/path(/$part)? ==> DOES NOT WORK - The grouping operator spans multiple parts of the string
+     * 		/path(/\$part)? ==> DOES NOT WORK - The grouping operator spans multiple parts of the string
      * 
-     * TODO: make this work with query params.  e.g.:  /path/$var?foo=$foo
+     * TODO: make this work with query params.  e.g.:  /path/\$var?foo=\$foo
      */
     def simple = RichPathMatchingRegex(makeSimpleRegex(sc))
     def p      = RichPathMatchingRegex(makeSimpleRegex(sc))
@@ -61,7 +61,7 @@ object RouteMatchers {
      * 
      * e.g.:
      * 
-     *  /path/(?<$rest>.+)  ==> Will match /path/to/somewhere with the "to/somewhere" being bound the the "rest" variable
+     *  /path/(?<\$rest>.+)  ==> Will match /path/to/somewhere with the "to/somewhere" being bound the the "rest" variable
      */
     def regex = RichPathMatchingRegex(makeFullRegex(sc))
   }

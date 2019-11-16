@@ -53,7 +53,7 @@ sealed trait PostData {
 
   final def value: String = self.getString()
   
-  /** Force this data to disk (if it's not already there) */
+  ///** Force this data to disk (if it's not already there) */
   //def toDiskPostData: DiskPostData
 }
 

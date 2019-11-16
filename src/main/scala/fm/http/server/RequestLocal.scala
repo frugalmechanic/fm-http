@@ -109,5 +109,8 @@ class RequestLocal[T] {
   /**
    * Override this is you want to have a default value that is set on first access if set() hasn't been called
    */
-  protected def initialValue(implicit request: Request): Option[T] = None  
+  protected def initialValue(implicit request: Request /* TODO: 2.13 @unused */): Option[T] = {
+    assert(request.isNotNull) // hack to suppress unused warning
+    None
+  }
 }

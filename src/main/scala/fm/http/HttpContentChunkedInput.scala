@@ -37,9 +37,9 @@ final case class HttpContentChunkedInput(input: ChunkedInput[ByteBuf]) extends C
    * thus the stream has reached at its end, any subsequent isEndOfInput() call must
    * return false.
    *
-   * @returns the fetched chunk. null if there is no data left in the stream. Please
-   *          note that null does not necessarily mean that the stream has reached at
-   *          its end. In a slow stream, the next chunk might be unavailable just momentarily.
+   * @return The fetched chunk. null if there is no data left in the stream. Please
+   *         note that null does not necessarily mean that the stream has reached at
+   *         its end. In a slow stream, the next chunk might be unavailable just momentarily.
    */
   def readChunk(allocator: ByteBufAllocator): HttpContent = {
     if (isEndOfInput) return LastHttpContent.EMPTY_LAST_CONTENT
@@ -52,9 +52,9 @@ final case class HttpContentChunkedInput(input: ChunkedInput[ByteBuf]) extends C
    * thus the stream has reached at its end, any subsequent isEndOfInput() call must 
    * return false.
    * 
-   * @returns the fetched chunk. null if there is no data left in the stream. Please 
-   *          note that null does not necessarily mean that the stream has reached at 
-   *          its end. In a slow stream, the next chunk might be unavailable just momentarily.
+   * @return The fetched chunk. null if there is no data left in the stream. Please
+   *         note that null does not necessarily mean that the stream has reached at
+   *         its end. In a slow stream, the next chunk might be unavailable just momentarily.
    */
   def readChunk(ctx: ChannelHandlerContext): HttpContent = readChunk(ctx.alloc())
 }
