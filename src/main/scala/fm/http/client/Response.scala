@@ -30,10 +30,10 @@ object Response {
 
   // Semi-hack to access this protected helper
   private object Decoder extends HttpResponseDecoder {
-    def isContentAlwaysEmptyWrapper(msg: HttpMessage): Boolean = isContentAlwaysEmpty(msg)
+    override def isContentAlwaysEmpty(msg: HttpMessage): Boolean = super.isContentAlwaysEmpty(msg)
   }
 
-  def isContentAlwaysEmpty(msg: HttpMessage): Boolean = Decoder.isContentAlwaysEmptyWrapper(msg)
+  private[client] def isContentAlwaysEmpty(msg: HttpMessage): Boolean = Decoder.isContentAlwaysEmpty(msg)
 }
 
 sealed abstract class Response(response: HttpResponse) extends Closeable {
