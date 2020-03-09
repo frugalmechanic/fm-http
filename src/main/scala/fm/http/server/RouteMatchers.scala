@@ -164,4 +164,5 @@ object RouteMatchers {
   val PATCH       = HttpMethodMatcher(HttpMethod.PATCH)
 
   val GET_OR_POST = GET | POST
+  val GET_OR_POST_OR_OPTIONS = GET_OR_POST | OPTIONS
 }
