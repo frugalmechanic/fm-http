@@ -4,9 +4,9 @@ name := "fm-http"
 
 description := "Async Http Client & Server for Scala"
 
-scalaVersion := "2.12.10"
+scalaVersion := "2.12.11"
 
-crossScalaVersions := Seq("2.11.11", "2.12.10")
+crossScalaVersions := Seq("2.11.12", "2.12.11")
 
 val fatalWarnings = Seq(
   // Enable -Xlint, but disable the default 'unused' so we can manually specify below
