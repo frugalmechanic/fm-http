@@ -119,6 +119,7 @@ abstract class HttpClient extends Closeable {
   private def postAsyncImpl(url: String, body: String, headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Post(url, headers, body), timeout)
   private def postAsyncImpl(url: String, body: Array[Byte], headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Post(url, headers, body), timeout)
   private def postAsyncImpl(url: String, body: File, headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Post(url, headers, body), timeout)
+  private def postAsyncImpl(url: String, content: LinkedHttpContent, headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Post(url, headers, content), timeout)
 
   //
   // The rest of the file was auto-generated using the following code (copy/:paste into a REPL):
@@ -355,6 +356,9 @@ println(makeMethodCombinations("postAsync", "postAsyncImpl", "Future[AsyncRespon
   final def postAsync(url: String, body: File): Future[AsyncResponse] = postAsyncImpl(url, body, defaultHeaders, defaultResponseTimeout)
 
   /** Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def postAsync(url: String, body: LinkedHttpContent): Future[AsyncResponse] = postAsyncImpl(url, body, defaultHeaders, defaultResponseTimeout)
+
+  /** Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies */
   final def postAsync(url: String, body: File, headers: Headers): Future[AsyncResponse] = postAsyncImpl(url, body, headers, defaultResponseTimeout)
 
   /** Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies */
@@ -363,4 +367,6 @@ println(makeMethodCombinations("postAsync", "postAsyncImpl", "Future[AsyncRespon
   /** Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies */
   final def postAsync(url: String, body: File, headers: Headers, timeout: Duration): Future[AsyncResponse] = postAsyncImpl(url, body, headers, timeout)
 
+  /** Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def postAsync(url: String, body: LinkedHttpContent, headers: Headers, timeout: Duration): Future[AsyncResponse] = postAsyncImpl(url, body, headers, timeout)
 }

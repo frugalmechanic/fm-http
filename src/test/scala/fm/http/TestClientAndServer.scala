@@ -20,6 +20,7 @@ import fm.common.Implicits._
 import fm.lazyseq.LazySeq
 import io.netty.buffer.{ByteBuf, Unpooled}
 import java.io.{File, RandomAccessFile}
+import java.nio.channels.ClosedChannelException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
@@ -182,6 +183,13 @@ object TestClientAndServer {
       Response.Ok(headers, Unpooled.copiedBuffer("ok", StandardCharsets.ISO_8859_1))
     }
 
+    case POST(simple"/upload_file/${LONG(limit)}")      => {
+      val uploadFile: File = File.createTempFile("upload", ".file")
+      request.content.writeToFile(uploadFile, limit).map{ _ =>
+        Response.Ok("OK")
+      }
+    }
+
     case POST("/upload")                  => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ sum: Int => Response.Ok(sum.toString) }
     case POST("/close/upload")            => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ sum: Int => Response(Status(200), Headers("Connection" -> "close"), sum.toString) }
   }
@@ -219,7 +227,14 @@ object TestClientAndServer {
     val buf: ByteBuf = Unpooled.wrappedBuffer(BodyBuf, (idx % MaxChars).toInt, sizeToGenerate)
     
     require(buf.readableBytes() == sizeToGenerate)
-    LinkedHttpContent.async(buf, Future.successful(Some(makeLinkedHttpContent(sizeBytes - sizeToGenerate, idx + sizeToGenerate))))
+
+    val remainingBytes: Long = sizeBytes - sizeToGenerate
+    def nextChunk: Option[LinkedHttpContent] = if (remainingBytes <= 0) None else  Some(makeLinkedHttpContent(remainingBytes, idx + sizeToGenerate))
+
+    LinkedHttpContent.async(
+      buf,
+      Future.successful(nextChunk)
+    )
   }
   
   protected val handler: PartialFunction[Request, Future[Response]] = new PartialFunction[Request, Future[Response]] {
@@ -240,7 +255,7 @@ object TestClientAndServer {
 
 // TODO: split this into a "stress test" mode and a "normal" unit testing mode
 final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAfterAll {
-  import TestClientAndServer.{charForIdx, client, clientNoFollowRedirects, port, requestCount}
+  import TestClientAndServer.{charForIdx, client, clientNoFollowRedirects, makeLinkedHttpContent, OneMB, port, requestCount}
   import client.executionContext
   import fm.http.client._
   
@@ -320,6 +335,15 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
         
         idx + i
       }.map{ _ => true }
+    }
+  }
+
+  private def postFile(path: String, content: LinkedHttpContent): Future[Boolean] = {
+    client.postAsync(makeUrl(path), content).map{ response: AsyncResponse =>
+      response.status.code should equal (200)
+      val body: Future[String] = response.body.map{ _.readToString() }.getOrElse(Future.successful(""))
+      Await.result(body, 60.seconds) shouldBe ("OK")
+      true
     }
   }
 
@@ -415,7 +439,21 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   test("Single Request with Large Response Body (100 MB)") {
     Await.result(getAndVerifyData("/data_hundred_mb"), 60.seconds)
   }
-  
+
+  test("Single Request post Large Response Body - writeToFile (1 MB)") {
+    Await.result(postFile(s"/upload_file/$OneMB", makeLinkedHttpContent(OneMB)), 60.seconds)
+  }
+
+  test("Single Request post Large Response Body - writeToFile (100 MB)") {
+    Await.result(postFile(s"/upload_file/${OneMB*100}", makeLinkedHttpContent(OneMB*100)), 60.seconds)
+  }
+
+  test("Single Request post Large Response Body - writeToFile Exceeds Maximum Length") {
+    intercept[ClosedChannelException] {
+      Await.result(postFile(s"/upload_file/$OneMB", makeLinkedHttpContent(OneMB*10)), 60.seconds)
+    }
+  }
+
   test("Parallel Sync Requests with Large Response Body (200 Requests, 1 MB)") {
     // Uses blocking calls to maintain a constant number of connections to the server
     LazySeq.wrap(1 to 200).parForeach(threads=64){ _ =>

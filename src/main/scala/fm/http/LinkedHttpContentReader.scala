@@ -108,14 +108,25 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   /**
    * Write this body to a file
    */
-  def writeToFile(file: File): Future[Unit] = {
+  def writeToFile(file: File): Future[Unit] = writeToFile(file, Long.MaxValue)
+
+  def writeToFile(file: File, maxLength: Long): Future[Unit] = {
     val os: FileOutputStream = new FileOutputStream(file)
+    var bytesWritten: Long = 0
     val f: Future[Unit] = foldLeft(os){ (os, buf) =>
-      buf.readBytes(os, buf.readableBytes())
+      val readablBytes: Int = buf.readableBytes()
+      bytesWritten += readablBytes
+      buf.readBytes(os, readablBytes)
+      require(bytesWritten <= maxLength, s"Body exceeds maxLength.  Body Length (so far): $bytesWritten  Specified Max Length: $maxLength")
       os
     }.map{ _ => Unit }
     
-    f.onComplete{ case _ => os.close() }
+    f.onComplete{
+      case Success(_) => os.close()
+      case Failure(_) =>
+        os.close()
+        file.delete()
+    }
     
     f
   }
