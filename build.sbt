@@ -39,7 +39,7 @@ fork in Test := true
 
 libraryDependencies ++= Seq(
   "com.frugalmechanic" %% "scala-optparse" % "1.1.3",
-  "com.frugalmechanic" %% "fm-common" % "0.42.0",
+  "com.frugalmechanic" %% "fm-common" % "0.45.0",
   "com.frugalmechanic" %% "fm-lazyseq" % "0.12.0" % "test"
 )
 
