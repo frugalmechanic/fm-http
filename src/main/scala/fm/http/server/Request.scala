@@ -58,11 +58,15 @@ final class Request (
   request: HttpRequest,
   val content: LinkedHttpContentReader
 )(implicit execution: ExecutionContext) extends Logging with Closeable {
-
   /**
    * A fm.common.UUID that can be used to uniquely identify this request
    */
   val id: UUID = UUID()
+
+  /**
+   * The time this Request started
+   */
+  val startTimeMillis: Long = System.currentTimeMillis()
   
   private[this] val completedPromise: Promise[Unit] = Promise()
 
