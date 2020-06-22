@@ -121,40 +121,38 @@ abstract class HttpServerApp extends Logging {
    * Run the Web Server
    */
   private def doRun(ports: Set[Int], detatch: Boolean, emailLogging: Boolean): Unit = {
-    val options: HttpServerOptions = HttpServerOptions(
-      requestIdResponseHeader = requestIdResponseHeader,
-      clientIPLookupSpecs = clientIPLookupSpecs,
-      maxInitialLineLength = maxInitialLineLength,
-      maxHeaderSize = maxHeaderSize,
-      maxChunkSize = maxChunkSize
-    )
+    val options: HttpServerOptions = {
+      HttpServerOptions.default
+        .withRequestIdResponseHeader(requestIdResponseHeader)
+        .withClientIPLookupSpecs(clientIPLookupSpecs)
+    }
 
-    // Figure out which port we should listen on    
+    // Figure out which port we should listen on
     val (usedPorts, availPorts) = ports.partition{ alive }
-    
+
     if (availPorts.isEmpty) { logger.error("All Ports in use"); sys.exit(-1) }
-    
+
     val port: Int = availPorts.head
     logger.info("Using Port: "+port)
-    
+
     // Startup the Server
     val server: HttpServer = HttpServer(port, router, AuthKey, options)
-    
+
     // Check that the server is alive and responding
     assert(alive(port), "Server not alive?!")
-    
+
     server.enablePing()
 
     registerPingSignalHandlers(server)
-    
+
     if (usedPorts.nonEmpty) {
       logger.info("Allowing Load Balancer to pickup new server...")
       Thread.sleep(5000)
-      
+
       logger.info("Shutting down old servers...")
       shutdownPorts(usedPorts)
     }
-    
+
     if (emailLogging) setupEmailLogging()
 
     logger.info("Successfully Started ("+POSIX.getpid+")")
@@ -162,21 +160,21 @@ abstract class HttpServerApp extends Logging {
     if (detatch) {
       logger.info("Redirecting STDOUT/STDERR to log and Detatching...")
       println(DETATCH_STRING)
-      
+
       POSIX.setsid()
 
       System.out.close()
       System.err.close()
 
       removeConsoleLogging()
-      
+
       System.setOut(new PrintStream(new LoggingOutputStream("stdout"), true, "UTF-8"))
       System.setErr(new PrintStream(new LoggingOutputStream("stderr"), true, "UTF-8"))
     }
 
     // Block until shutdown is requested
     server.awaitShutdown()
-    
+
     // Shutdown Logging
     import ch.qos.logback.classic.LoggerContext
     LoggerFactory.getILoggerFactory.asInstanceOf[LoggerContext].stop()
@@ -207,7 +205,9 @@ abstract class HttpServerApp extends Logging {
   /**
    * Create the exec command that will be used to launch the child process
    */
-  private def makeCommand(ports: Set[Int], includeClasspath: Boolean = true): Seq[String] = {
+  private def makeCommand(ports: Set[Int]): Seq[String] = makeCommand(ports, true)
+
+  private def makeCommand(ports: Set[Int], includeClasspath: Boolean): Seq[String] = {
     val JAVA_HOME: String = System.getProperty("java.home")
     
     val JAVA_OPTS: Seq[String] = ManagementFactory.getRuntimeMXBean.getInputArguments.asScala.toIndexedSeq ++ Seq(

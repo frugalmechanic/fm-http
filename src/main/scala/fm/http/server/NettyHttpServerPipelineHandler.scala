@@ -464,8 +464,10 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     if (null != contentBuilder) contentBuilder += cause
     ctx.close()
   }
-  
-  private def trace(name: String, ex: Throwable = null)(implicit ctx: ChannelHandlerContext): Unit = {
+
+  private def trace(name: String)(implicit ctx: ChannelHandlerContext): Unit = trace(name, null)
+
+  private def trace(name: String, ex: Throwable)(implicit ctx: ChannelHandlerContext): Unit = {
     if (logger.isTraceEnabled) logger.trace(s"$id - $name - ${ctx.channel}", ex)
   }
 }

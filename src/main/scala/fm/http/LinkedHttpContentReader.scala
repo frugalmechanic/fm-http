@@ -73,7 +73,9 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   /**
    * Read the response body into an Array[Byte]
    */
-  def readToByteArray(maxLength: Long = Long.MaxValue): Future[Array[Byte]] = {
+  def readToByteArray(): Future[Array[Byte]] = readToByteArray(Long.MaxValue)
+
+  def readToByteArray(maxLength: Long): Future[Array[Byte]] = {
     foldLeft(new ByteArrayOutputStream){ (out: ByteArrayOutputStream, buf: ByteBuf) =>
       buf.readBytes(out, buf.readableBytes())
       require(out.size() <= maxLength, s"Body exceeds maxLength.  Body Length (so far): ${out.size}  Specified Max Length: $maxLength")
@@ -84,11 +86,18 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   /**
    * Read the response body into a string
    */
-  def readToString(maxLength: Long = Long.MaxValue, encoding: Charset = CharsetUtil.ISO_8859_1): Future[String] = {
+
+  def readToString(maxLength: Long): Future[String] = readToString(maxLength, CharsetUtil.ISO_8859_1)
+  def readToString(encoding: Charset): Future[String] = readToString(Long.MaxValue, CharsetUtil.ISO_8859_1)
+
+  def readToString(maxLength: Long, encoding: Charset): Future[String] = {
     if (null == encoding) readToStringWithDetectedCharset(maxLength) else readToStringWithCharset(encoding, maxLength)
   }
-  
-  def readToStringWithDetectedCharset(maxLength: Long = Long.MaxValue, defaultEncoding: Charset = CharsetUtil.ISO_8859_1): Future[String] = {
+
+  def readToStringWithDetectedCharset(maxLength: Long): Future[String] = readToStringWithDetectedCharset(maxLength, CharsetUtil.ISO_8859_1)
+  def readToStringWithDetectedCharset(defaultEncoding: Charset): Future[String] = readToStringWithDetectedCharset(Long.MaxValue, CharsetUtil.ISO_8859_1)
+
+  def readToStringWithDetectedCharset(maxLength: Long, defaultEncoding: Charset): Future[String] = {
     readToByteArray(maxLength).map{ bytes: Array[Byte] =>
       val charset: Option[Charset] = IOUtils.detectCharset(new ByteArrayInputStream(bytes), false)
       
@@ -96,8 +105,10 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
       new String(bytes, charset.getOrElse(defaultEncoding))
     }
   }
-  
-  def readToStringWithCharset(encoding: Charset, maxLength: Long = Long.MaxValue): Future[String] = {
+
+  def readToStringWithCharset(encoding: Charset): Future[String] = readToStringWithCharset(encoding, Long.MaxValue)
+
+  def readToStringWithCharset(encoding: Charset, maxLength: Long): Future[String] = {
     foldLeft(new StringBuilder){ (sb: StringBuilder, buf: ByteBuf) =>
       sb.append(buf.toString(encoding))
       require(sb.length <= maxLength, s"Body exceeds maxLength.  Body Length (so far): ${sb.length}  Specified Max Length: $maxLength")

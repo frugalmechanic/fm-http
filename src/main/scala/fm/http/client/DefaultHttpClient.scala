@@ -130,10 +130,41 @@ object DefaultHttpClient extends Logging {
       
     }
   }
+
+  @deprecated("proxy is now a required constructor parameter", "0.31.0") def apply(
+    defaultMaxLength: Long,
+    defaultHeaders: Headers,
+    useConnectionPool: Boolean,  // Should we re-use connections? (Use HTTP Keep Alive?)
+    maxConnectionsPerHost: Int,  // Only applies if useConnectionPool is true
+    maxRequestQueuePerHost: Int, // Only applies if useConnectionPool is true
+    maxConnectionIdleDuration: FiniteDuration,
+    defaultResponseTimeout: Duration, // The maximum time to wait for a Response
+    defaultConnectTimeout: Duration, // The maximum time to wait to connect to a server
+    defaultCharset: Charset, // The default charset to use (if none is specified in the response) when converting responses to strings
+    followRedirects: Boolean, // Should 301/302 redirects be followed for GET or HEAD requests?
+    maxRedirectCount: Int, // The maximum number of 301/302 redirects to follow for a GET or HEAD request
+    disableSSLCertVerification: Boolean, // Do not verify SSL certs (SHOULD NOT USE IN PRODUCTION)
+    autoDecompress: Boolean,
+  ): DefaultHttpClient = DefaultHttpClient(
+    None,
+    defaultMaxLength,
+    defaultHeaders,
+    useConnectionPool,
+    maxConnectionsPerHost,
+    maxRequestQueuePerHost,
+    maxConnectionIdleDuration,
+    defaultResponseTimeout,
+    defaultConnectTimeout,
+    defaultCharset,
+    followRedirects,
+    maxRedirectCount,
+    disableSSLCertVerification,
+    autoDecompress: Boolean,
+  )
 }
 
 final case class DefaultHttpClient(
-  proxy: Option[ProxyOptions] = None,
+  proxy: Option[ProxyOptions],
   defaultMaxLength: Long,
   defaultHeaders: Headers,
   useConnectionPool: Boolean,  // Should we re-use connections? (Use HTTP Keep Alive?)
@@ -146,7 +177,7 @@ final case class DefaultHttpClient(
   followRedirects: Boolean, // Should 301/302 redirects be followed for GET or HEAD requests?
   maxRedirectCount: Int, // The maximum number of 301/302 redirects to follow for a GET or HEAD request
   disableSSLCertVerification: Boolean, // Do not verify SSL certs (SHOULD NOT USE IN PRODUCTION)
-  autoDecompress: Boolean
+  autoDecompress: Boolean,
 ) extends HttpClient with Logging {
   import DefaultHttpClient.{EndPoint, TimeoutTask, workerGroup}
   

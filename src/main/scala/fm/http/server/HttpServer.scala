@@ -55,13 +55,17 @@ object HttpServer {
       case ex: Throwable => logger.error(s"Caught Exception in WebServer ($name) Shutdown Hook: "+ ex)
     }
   }
+
+  def apply(router: RequestRouter, authKey: String): HttpServer = HttpServer(8080, router, authKey)
+  def apply(router: RequestRouter, authKey: String, serverOptions: HttpServerOptions): HttpServer = HttpServer(8080, router, authKey, serverOptions)
+  def apply(port: Int, router: RequestRouter, authKey: String): HttpServer = HttpServer(port, router, authKey, HttpServerOptions.default)
 }
 
 final case class HttpServer (
-  port: Int = 8080,
+  port: Int,
   router: RequestRouter,
   authKey: String,
-  serverOptions: HttpServerOptions = HttpServerOptions.default
+  serverOptions: HttpServerOptions
 ) extends Logging {
   private[this] val name: String = s"WebServer on Port $port"
   private[this] val shutdownHookThread: Thread = new HttpServer.ShutdownHookThread(name, this)
