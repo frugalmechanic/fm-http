@@ -16,7 +16,7 @@
 package fm.http.client
 
 import fm.common.Implicits._
-import fm.common.{Logging, URI, URL}
+import fm.common.{Logging, ScheduledTaskRunner, URI, URL}
 import fm.http._
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel._
@@ -31,7 +31,7 @@ import java.nio.charset.Charset
 import java.lang.ref.WeakReference
 import java.net.MalformedURLException
 import javax.net.ssl.TrustManagerFactory
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration._
 import scala.util.{Failure, Success}
 
@@ -40,8 +40,6 @@ import scala.util.{Failure, Success}
  * This holds a single copy of the EventLoopGroup / NettyExecutionContext
  */
 object DefaultHttpClient extends Logging {
-  import HttpClient.{executionContext, timer}
-  
 //  def close(): Unit = {
 //    workerGroup.shutdownGracefully(1, 15, TimeUnit.SECONDS)
 //  }
@@ -49,7 +47,10 @@ object DefaultHttpClient extends Logging {
   private val workerGroup: EventLoopGroup = {
     NativeHelpers.makeClientEventLoopGroup(0, new ThreadFactory("fm-http-client-worker", daemon = true))
   }
-    
+
+  private implicit val executionContext: ExecutionContext = ExecutionContext.fromExecutorService(workerGroup)
+  private val timer: ScheduledTaskRunner = ScheduledTaskRunner("HttpExecutionContext.Timer") // TODO: use the EventLoopGroup
+
   /**
    * Simple ThreadFactory that allows us to name the threads something reasonable and set the daemon flag
    */
@@ -149,6 +150,9 @@ final case class DefaultHttpClient(
   autoDecompress: Boolean
 ) extends HttpClient with Logging {
   import DefaultHttpClient.{EndPoint, TimeoutTask, workerGroup}
+
+  override implicit def executionContext: ExecutionContext = DefaultHttpClient.executionContext
+  override def timer: ScheduledTaskRunner = DefaultHttpClient.timer
   
   require(maxConnectionsPerHost > 0, "maxConnectionsPerHost must be > 0")
   require(maxRedirectCount >= 0, "maxRedirectCount must be >= 0")

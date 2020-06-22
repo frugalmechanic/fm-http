@@ -16,14 +16,14 @@
 package fm.http.server
 
 import fm.common.Implicits._
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 /**
  * If the request host doesn't match the host param then redirect
  */
 final case class DomainRedirectFilter(host: String) extends RequestFilter {
   
-  def handle(request: Request, handler: RequestHandler): Future[Response] = {
+  def handle(request: Request, handler: RequestHandler)(implicit executor: ExecutionContext): Future[Response] = {
     val requestHost: String = request.headers.host.getOrElse("")
     
     if (host === requestHost) {

@@ -21,9 +21,9 @@ import fm.http.Status
 import scala.concurrent.Future
 
 object ControlHandler {
-  private def Ok = Future.successful(Response(Status.OK, "ok"))
-  private def Disabled = Future.successful(Response(Status.SERVICE_UNAVAILABLE, "disabled"))
-  private def NotAuthorized = Future.successful(Response(Status.FORBIDDEN, "invalid authorization"))
+  private def Ok: Future[Response] = Future.successful(Response(Status.OK, "ok"))
+  private def Disabled: Future[Response] = Future.successful(Response(Status.SERVICE_UNAVAILABLE, "disabled"))
+  private def NotAuthorized: Future[Response] = Future.successful(Response(Status.FORBIDDEN, "invalid authorization"))
 }
 
 final case class ControlHandler(server: HttpServer, authKey: String) extends DefaultRequestRouter with Logging {

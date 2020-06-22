@@ -22,7 +22,7 @@ import fm.http.{Headers, Status}
 import io.netty.handler.codec.http.HttpHeaderNames
 import java.security.SecureRandom
 import scala.util.matching.Regex
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 object DigestAuth {
   private val DigestAuthHeader: Regex = """Digest (.+)""".r
@@ -125,7 +125,7 @@ final case class DigestAuth(
 
   if (logger.isDebugEnabled) logger.debug(s"DigestAuth: realm: $realm, users: $users")
 
-  protected def requireAuthImpl(request: Request)(action: => Future[Response]): Future[Response] = try {
+  override protected def requireAuthImpl(request: Request)(action: => Future[Response])(implicit executor: ExecutionContext): Future[Response] = try {
     if (isValid(request)) action else response(isStale = false)
   } catch {
     case Stale => response(isStale = true)

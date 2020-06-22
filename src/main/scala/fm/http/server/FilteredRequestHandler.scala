@@ -15,8 +15,8 @@
  */
 package fm.http.server
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 final case class FilteredRequestHandler(handler: RequestHandler, filter: RequestFilter) extends RequestHandler {
-  def apply(request: Request): Future[Response] = filter.handle(request, handler)
+  override def apply(request: Request)(implicit executor: ExecutionContext): Future[Response] = filter.handle(request, handler)
 }

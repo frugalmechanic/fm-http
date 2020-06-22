@@ -2,7 +2,7 @@ package fm.http.server
 
 import fm.common.URL
 import fm.http.{Headers, Status}
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 /**
  * If the X-SSL header is not set then this redirects to the HTTPS version
@@ -11,7 +11,7 @@ import scala.concurrent.Future
  * TODO: probably need to do something smarter with POST/PUT/etc requests.
  */
 object RequireSSLFilter extends RequestFilter {
-  def handle(request: Request, handler: RequestHandler): Future[Response] = {
+  def handle(request: Request, handler: RequestHandler)(implicit executor: ExecutionContext): Future[Response] = {
     // Make sure the X-SSL header is set
     if (request.headers.xSSL.getOrElse(false)) return handler(request)
     

@@ -27,7 +27,7 @@ object RequestRouter {
   def apply(h: PartialFunction[Request, Future[Response]]): RequestRouter = new DefaultRequestRouter { val handler = h }
 }
 
-trait RequestRouter {
+trait RequestRouter extends WithFilter[RequestRouter] {
   /** Given a request lookup a RequestHandler that can satisfy it */
   def lookup(request: Request): Option[RequestHandler]
   
@@ -46,37 +46,36 @@ trait RequestRouter {
   /**
    * Run any RequestHandlers returned by this RequestRouter through a RequestFilter
    */
-  final def withFilter(filter: RequestFilter): RequestRouter = FilteredRequestRouter(this, filter)
-  
-  /**
-   * Run any RequestHandlers returned by this RequestRouter through an optional RequestFilter
-   */
-  final def withFilter(filter: Option[RequestFilter]): RequestRouter = if (filter.isDefined) withFilter(filter.get) else this
-    
-  /**
-   * Run any RequestHandlers returned by this RequestRouter through a sequence of RequestFilter
-   */
-  final def withFilters(filters: TraversableOnce[RequestFilter]): RequestRouter = filters.foldRight(this){ (filter, router) => router.withFilter(filter) }
-  
+  override def withFilter(filter: RequestFilter): RequestRouter = FilteredRequestRouter(this, filter)
+
   /**
    * If this router doesn't match the request then try that router
    */
   final def orElse(that: RequestRouter): RequestRouter = OrElseRequestRouter(this, that)
-  
+
+  /**
+   * If this request router does not match a request then send the request to the specified default handler
+   *
+   * This is for backwards compatibility from when RequestHandler was a Function1[Request, Future[Response]]
+   */
+  final def withDefaultHandler(handler: Request => Future[Response]): RequestRouter = OrElseRequestRouter(this, SingleHandlerRequestRouter(handler))
+
   /**
    * If this request router does not match a request then send the request to the specified default handler
    */
   final def withDefaultHandler(handler: RequestHandler): RequestRouter = OrElseRequestRouter(this, SingleHandlerRequestRouter(handler))
-  
+
   /**
    * If a RequestHandler throws an Exception then run this handler.  Useful for showing an Error Page when a request fails
+   *
+   * This is for backwards compatibility from when ErrorRequestHandler was a Function2[Requestm, Throwable, Future[Response]]
    */
-//  final def withErrorHandler(handler: RequestHandler)(implicit ec: ExecutionContext): RequestRouter = ErrorHandlerRequestRouter(this, handler)
+  final def withErrorHandler(handler: (Request, Throwable) => Future[Response]): RequestRouter = ErrorHandlerRequestRouter(this, handler)
 
   /**
    * If a RequestHandler throws an Exception then run this handler.  Useful for showing an Error Page when a request fails
    */
-  final def withErrorHandler(handler: ErrorRequestHandler)(implicit ec: ExecutionContext): RequestRouter = ErrorHandlerRequestRouter(this, handler)
+  final def withErrorHandler(handler: ErrorRequestHandler): RequestRouter = ErrorHandlerRequestRouter(this, handler)
 }
 
 /**
@@ -136,24 +135,28 @@ final case class OrElseRequestRouter(a: RequestRouter, b: RequestRouter) extends
   override def afterShutdown():  Unit = { a.afterShutdown() ; b.afterShutdown()  }
 }
 
-final case class ErrorHandlerRequestRouter(router: RequestRouter, errorHandler: ErrorRequestHandler)(implicit ec: ExecutionContext) extends RequestRouter with Logging {
+final case class ErrorHandlerRequestRouter(router: RequestRouter, errorHandler: ErrorRequestHandler) extends RequestRouter with Logging {
   def lookup(request: Request): Option[RequestHandler] = router.lookup(request).map{ wrap }
   
   /**
    * There are 2 places errors can be thrown.  Either by the RequestHandler or the Future
    * that the RequestHandler returns.  We catch both of them.
    */
-  private def wrap(handler: RequestHandler): RequestHandler = (request: Request) => {
-    try {
-      handler(request).recoverWith{ 
+  private def wrap(handler: RequestHandler): RequestHandler = new WrappedHandler(handler)
+
+  private class WrappedHandler(handler: RequestHandler) extends RequestHandler {
+    def apply(request: Request)(implicit executor: ExecutionContext): Future[Response] = {
+      try {
+        handler(request).recoverWith{
+          case ex: Throwable =>
+            log(ex)
+            errorHandler(request, ex)
+        }
+      } catch {
         case ex: Throwable =>
           log(ex)
           errorHandler(request, ex)
       }
-    } catch {
-      case ex: Throwable =>
-        log(ex)
-        errorHandler(request, ex)
     }
   }
   

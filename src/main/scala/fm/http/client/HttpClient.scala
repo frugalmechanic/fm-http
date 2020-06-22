@@ -27,16 +27,6 @@ import scala.concurrent.duration._
  */
 object HttpClient {
 
-  /**
-   * This can be imported if you know what you are doing
-   */
-  implicit val executionContext: ExecutionContext = HttpExecutionContext.global
-  
-  /**
-   * This can be used to schedule tasks
-   */
-  implicit val timer: ScheduledTaskRunner = HttpExecutionContext.timer
-  
   def apply(
     proxy: Option[ProxyOptions] = None,
     defaultMaxLength: Long = 104857600, /* 100MB (which may or may not be 100MB worth of Chars) */
@@ -79,11 +69,11 @@ object HttpClient {
   }
 }
 
-abstract class HttpClient extends Closeable { 
-  
-  final implicit def executionContext: ExecutionContext = HttpClient.executionContext
-  final implicit def timer: ScheduledTaskRunner = HttpClient.timer
-  
+abstract class HttpClient extends Closeable {
+
+  implicit def executionContext: ExecutionContext
+  def timer: ScheduledTaskRunner
+
   def defaultMaxLength: Long
   def defaultHeaders: Headers
   def defaultResponseTimeout: Duration

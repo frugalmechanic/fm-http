@@ -19,7 +19,7 @@ import com.frugalmechanic.optparse._
 import fm.common.Implicits._
 import fm.common.Logging
 import java.io.{BufferedReader, InputStreamReader, OutputStream, PrintStream}
-import java.net.{URL, HttpURLConnection}
+import java.net.{HttpURLConnection, URL}
 import java.lang.management.ManagementFactory
 import jnr.posix.POSIXFactory
 import jnr.posix.util.DefaultPOSIXHandler
@@ -54,6 +54,9 @@ abstract class HttpServerApp extends Logging {
 
   /** HttpRequestDecoder maxChunkSize (defaults to 8192) */
   protected def maxChunkSize: Int = HttpServerOptions.defaultMaxChunkSize
+
+  /** The optional ExecutionContext to run request handling on.  Will default to the Netty EventLoopGroup */
+  protected def requestHandlerExecutionContextProvider: Option[RequestHandlerExecutionContextProvider] = None
   
   private[this] val DETATCH_STRING: String = "\u0000"*4 // 4 NULL Characters
   private[this] val IS_CHILD_PROPERTY_KEY: String = "fm.webapp.is_child_process"
@@ -126,7 +129,8 @@ abstract class HttpServerApp extends Logging {
       clientIPLookupSpecs = clientIPLookupSpecs,
       maxInitialLineLength = maxInitialLineLength,
       maxHeaderSize = maxHeaderSize,
-      maxChunkSize = maxChunkSize
+      maxChunkSize = maxChunkSize,
+      requestHandlerExecutionContextProvider = requestHandlerExecutionContextProvider
     )
 
     // Figure out which port we should listen on    

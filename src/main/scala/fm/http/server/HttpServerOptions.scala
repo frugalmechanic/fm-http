@@ -92,6 +92,9 @@ object HttpServerOptions {
  * @param maxInitialLineLength HttpRequestDecoder maxInitialLineLength (defaults to 4096)
  * @param maxHeaderSize HttpRequestDecoder maxHeaderSize (defaults to 8192)
  * @param maxChunkSize HttpRequestDecoder maxChunkSize (defaults to 8192)
+ * @param requestHandlerExecutionContextProvider An optional RequestExecutionContextProvider instance to control which
+ *                                               ExecutionContext gets passed into the RequestHandler.  Defaults to
+ *                                               using the worker EventLoopGroup.
  */
 final case class HttpServerOptions(
   requestIdResponseHeader: Option[String],
@@ -99,7 +102,8 @@ final case class HttpServerOptions(
   clientIPLookupSpecs: Seq[HttpServerOptions.ClientIPLookupSpec] = Seq(HttpServerOptions.defaultClientIPLookupSpec),
   maxInitialLineLength: Int = HttpServerOptions.defaultMaxInitialLineLength,
   maxHeaderSize: Int = HttpServerOptions.defaultMaxHeaderSize,
-  maxChunkSize: Int = HttpServerOptions.defaultMaxChunkSize
+  maxChunkSize: Int = HttpServerOptions.defaultMaxChunkSize,
+  requestHandlerExecutionContextProvider: Option[RequestHandlerExecutionContextProvider] = None
 ) {
   require(maxRequestsPerConnection > 0, "maxRequestsPerConnection must be > 0")
 }

@@ -15,14 +15,15 @@
  */
 package fm.http.server
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
-abstract class DefaultRequestRouter extends RequestRouterBase with RequestHandler {
+abstract class DefaultRequestRouter extends RequestRouterBase with RequestRouterAndHandler {
 
+  // TODO: modify this to be able to take an ExecutionContext somehow?
   protected val handler: PartialFunction[Request, Future[Response]]
   
-  private[this] val thisHandler: Option[RequestHandler] = Some(this)
+  private[this] val thisHandler: Some[RequestHandler] = Some(this)
 
-  final def lookup(request: Request): Option[RequestHandler] = if (handler.isDefinedAt(request)) thisHandler else None 
-  final def apply(request: Request): Future[Response] = handler(request)
+  final override def lookup(request: Request): Option[RequestHandler] = if (handler.isDefinedAt(request)) thisHandler else None
+  final override def apply(request: Request)(implicit executor: ExecutionContext): Future[Response] = handler(request)
 }

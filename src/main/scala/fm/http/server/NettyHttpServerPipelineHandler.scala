@@ -51,16 +51,23 @@ object NettyHttpServerPipelineHandler {
 }
 
 /**
- * Each connection has once instance of this Handler created which means it can be used to track state if needed.
+ * Each connection has one instance of this Handler created which means it can be used to track state if needed.
  */
-final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, executionContext: ExecutionContext, router: RequestRouter, options: HttpServerOptions) extends SimpleChannelInboundHandler[HttpObject] with Logging {
+final class NettyHttpServerPipelineHandler(
+  channelGroup: ChannelGroup,
+  router: RequestRouter,
+  options: HttpServerOptions
+)(implicit executor: ExecutionContext) extends SimpleChannelInboundHandler[HttpObject] with Logging {
   import NettyHttpServerPipelineHandler._
   
   private[this] val id: Long = ID.incrementAndGet()
-  private[this] implicit val executionCtx: ExecutionContext = executionContext
   
   /** The number of requests that we've handled for this connection */
   private[this] var numRequestsHandled: Long = 0L
+
+  private[this] val requestHandlerExecutionContextProvider: RequestHandlerExecutionContextProvider = {
+    options.requestHandlerExecutionContextProvider.getOrElse{ RequestHandlerExecutionContextProvider.Static(executor) }
+  }
   
   /** This is called once when a client connects to our server */
   override def channelActive(ctx: ChannelHandlerContext): Unit = {
@@ -146,7 +153,7 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
         try {
           sendFileResponse(request, prepareResponse(request, file.toHttpResponse(version), wantKeepAlive), file.file)
         } catch {
-          case ex: FileNotFoundException => sendFullResponse(request, prepareResponse(request, makeErrorResponse(Status.NOT_FOUND).toFullHttpResponse(version), wantKeepAlive))
+          case _: FileNotFoundException => sendFullResponse(request, prepareResponse(request, makeErrorResponse(Status.NOT_FOUND).toFullHttpResponse(version), wantKeepAlive))
         }
     }}
   }
@@ -170,7 +177,9 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     val future: Future[Response] = router.lookup(r) match {
       case Some(handler) => 
         try {
-          handler(r)
+          // TODO: We might want to run the actual "handler(r)" code using the ExecutionContext returned by
+          //       the requestHandlerExecutionContextProvider.
+          handler(r)(requestHandlerExecutionContextProvider(r))
         } catch {
           case ex: Exception =>
             logger.error(s"Caught exception handling request: request", ex)
@@ -287,12 +296,11 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
     // The NettyContentCompressor can't handle a ChunkedFile (which is a ChunkedInput[ByteBuf]) 
     // so we wrap it in HttpContentChunkedInput to turn it into a ChunkedInput[HttpContent]
     val obj: HttpContentChunkedInput = HttpContentChunkedInput(new ChunkedStream(input))
-    
-    ctx.write(response)
-    ctx.writeAndFlush(obj).onComplete { res: Try[Void] =>
-      if (res.isFailure) onResponseComplete(request, res, HttpUtil.isKeepAlive(response))
-      else ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{ onResponseComplete(request, _, HttpUtil.isKeepAlive(response)) }
-    }
+
+    ctx.write(response, ctx.voidPromise())
+    ctx.write(obj, ctx.voidPromise())
+    ctx.write(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{ onResponseComplete(request, _, HttpUtil.isKeepAlive(response)) }
+    ctx.flush()
   }
   
   /**
@@ -336,7 +344,7 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
       HttpContentChunkedInput(new ChunkedFile(raf, 0, length, 8192))
     }
 
-    ctx.write(response)
+    ctx.write(response, ctx.voidPromise())
     ctx.writeAndFlush(obj).onComplete { res: Try[Void] =>
       // Make sure our RandomAccessFile got closed
       raf.close()

@@ -15,20 +15,4 @@
  */
 package fm.http
 
-import scala.concurrent.Future
-
-package object server extends fm.netty.PackageImplicits {
-  type RequestHandler = Request => Future[Response]
-  type ErrorRequestHandler = (Request, Throwable) => Future[Response]
-
-  implicit def requestHandlerToErrorRequestHandler(handler: RequestHandler): ErrorRequestHandler = {
-    (request: Request, _: Throwable) => handler(request)
-  }
-  
-  final implicit class RichRequestHandler(val handler: RequestHandler) extends AnyVal {
-    def withFilter(filter: RequestFilter): RequestHandler = FilteredRequestHandler(handler, filter)
-    def withFilter(filter: Option[RequestFilter]): RequestHandler = if (filter.isDefined) withFilter(filter.get) else handler
-    
-    def withFilters(filters: TraversableOnce[RequestFilter]): RequestHandler = filters.foldRight(handler){ (filter, newHandler) => newHandler.withFilter(filter) }
-  }
-}
+package object server extends fm.netty.PackageImplicits

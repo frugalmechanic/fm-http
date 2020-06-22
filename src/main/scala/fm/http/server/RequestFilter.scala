@@ -15,21 +15,25 @@
  */
 package fm.http.server
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 object RequestFilter {
   object empty extends RequestFilter {
-    def handle(request: Request, handler: RequestHandler): Future[Response] = handler(request) 
+    def handle(request: Request, handler: RequestHandler)(implicit executor: ExecutionContext): Future[Response] = handler(request)
   }
 }
 
 trait RequestFilter {
-  def handle(request: Request, handler: RequestHandler): Future[Response]
+  def handle(request: Request, handler: RequestHandler)(implicit executor: ExecutionContext): Future[Response]
   final def andThen(that: RequestFilter): AndThenRequestFilter = AndThenRequestFilter(this, that)
 }
 
 final case class AndThenRequestFilter(a: RequestFilter, b: RequestFilter) extends RequestFilter {
-  def handle(request: Request, handler: RequestHandler): Future[Response] = {
-    a.handle(request, (request: Request) => b.handle(request, handler))
+  def handle(request: Request, handler: RequestHandler)(implicit executor: ExecutionContext): Future[Response] = {
+    val nextHandler: RequestHandler = new RequestHandler {
+      def apply(request: Request)(implicit executor: ExecutionContext): Future[Response] = b.handle(request, handler)
+    }
+
+    a.handle(request, nextHandler)
   }
 }

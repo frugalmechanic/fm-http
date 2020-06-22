@@ -15,7 +15,7 @@
  */
 package fm.http
 
-import fm.common.{ImmutableDate, Logging, TestHelpers}
+import fm.common.{ImmutableDate, Logging, ScheduledTaskRunner, TestHelpers}
 import fm.common.Implicits._
 import fm.lazyseq.LazySeq
 import io.netty.buffer.{ByteBuf, Unpooled}
@@ -246,7 +246,7 @@ object TestClientAndServer {
     request.params.getFirstNonBlank("delay").flatMap{ _.toIntOption } match {
       case Some(delay) =>
         val p = Promise[Response]()
-        server.timer.schedule(delay.seconds){ p.completeWith(f) }
+        ScheduledTaskRunner.global.schedule(delay.seconds){ p.completeWith(f) }
         p.future
       case None => f
     }

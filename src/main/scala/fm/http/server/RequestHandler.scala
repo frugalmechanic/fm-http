@@ -15,11 +15,23 @@
  */
 package fm.http.server
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 
 object RequestHandler {
+  // For legacy API support.
+  // TODO: consider changing this to take a Request => Response which would ensure there is no need for an ExecutionContext
+  implicit def toRequestHandler(f: Request => Future[Response]): RequestHandler = new RequestHandler {
+    def apply(request: Request)(implicit executor: ExecutionContext): Future[Response] = f(request)
+  }
+
   def constant(response: Response) = new RequestHandler {
     private[this] val res: Future[Response] = Future.successful(response)
-    def apply(request: Request): Future[Response] = res
-  } 
+    def apply(request: Request)(implicit executor: ExecutionContext): Future[Response] = res
+  }
+}
+
+trait RequestHandler extends WithFilter[RequestHandler] {
+  def apply(request: Request)(implicit executor: ExecutionContext): Future[Response]
+
+  override def withFilter(filter: RequestFilter): RequestHandler = FilteredRequestHandler(this, filter)
 }

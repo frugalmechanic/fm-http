@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Frugal Mechanic (http://frugalmechanic.com)
+ * Copyright 2020 Frugal Mechanic (http://frugalmechanic.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,18 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package fm.http
+package fm.http.server
 
-import scala.concurrent.ExecutionContext
-import fm.common.ScheduledTaskRunner
-
-object HttpExecutionContext {
-  /**
-   *  A Global ExecutionContext that can be shared for Http related processing
-   *  
-   *  TODO: Figure out how to name the threads for this
-   */ 
-  implicit val global: ExecutionContext = ExecutionContext.fromExecutor(null)
-  
-  implicit val timer: ScheduledTaskRunner = ScheduledTaskRunner("HttpExecutionContext.Timer")
+trait RequestRouterAndHandler extends RequestRouter with RequestHandler with WithFilter[RequestRouterAndHandler] {
+  override def withFilter(filter: RequestFilter): RequestRouterAndHandler = {
+    new FilteredRequestRouterAndHandler(this, filter)
+  }
 }

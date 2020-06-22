@@ -27,8 +27,8 @@ import io.netty.handler.codec.http.{HttpRequestDecoder, HttpResponseEncoder}
 import io.netty.handler.stream.ChunkedWriteHandler
 import io.netty.util.concurrent.GlobalEventExecutor
 import fm.common.Implicits._
-import fm.common.{Logging, ScheduledTaskRunner}
-import fm.http.{HttpExecutionContext, NativeHelpers}
+import fm.common.Logging
+import fm.http.NativeHelpers
 
 object HttpServer {
   
@@ -70,9 +70,9 @@ final case class HttpServer (
   
   def enablePing():  Unit = controlHandler.enabled = true
   def disablePing(): Unit = controlHandler.enabled = false
-  
+
   private[this] val bossGroup: EventLoopGroup = {
-    NativeHelpers.makeServerEventLoopGroup(0, new HttpServer.ThreadFactory("fm-http-server-boss", daemon = false))
+    NativeHelpers.makeServerEventLoopGroup(1, new HttpServer.ThreadFactory("fm-http-server-boss", daemon = false))
   }
 
   private[this] val workerGroup: EventLoopGroup = {
@@ -84,8 +84,7 @@ final case class HttpServer (
   
   // This is for executing Scala Future callbacks in the WebRequestHandler, it uses the workerGroup which is the same
   // executor that the Netty ChannelFutures use for their callbacks.
-  implicit val executionContext: ExecutionContext = HttpExecutionContext.global
-  implicit val timer: ScheduledTaskRunner = HttpExecutionContext.timer
+  private implicit val executionContext: ExecutionContext = ExecutionContext.fromExecutor(workerGroup)
   
   private[this] val allChannels: ChannelGroup = new DefaultChannelGroup(GlobalEventExecutor.INSTANCE)
   
@@ -107,7 +106,7 @@ final case class HttpServer (
          p.addLast("encoder",       new HttpResponseEncoder())
          p.addLast("compressor",    new NettyContentCompressor())
          p.addLast("chunkedWriter", new ChunkedWriteHandler())
-         p.addLast("handler",       new NettyHttpServerPipelineHandler(allChannels, executionContext, completeRouter, serverOptions))
+         p.addLast("handler",       new NettyHttpServerPipelineHandler(allChannels, completeRouter, serverOptions))
          
        }
     })
