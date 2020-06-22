@@ -225,7 +225,8 @@ final class NettyHttpServerPipelineHandler(channelGroup: ChannelGroup, execution
   /**
    * Set common headers for both Full & Async responses
    */
-  private def prepareResponse[T <: HttpResponse](request: Request, response: T, wantKeepAlive: Boolean)(implicit ctx: ChannelHandlerContext): T = {
+  private def prepareResponse[T <: HttpResponse](request: Request, response: T, wantKeepAlive: Boolean)(implicit ctx: ChannelHandlerContext /* TODO: Scala 2.13: @unused */): T = {
+    assert(ctx.isNotNull) // hack to suppress unused warning
     HttpUtil.setKeepAlive(response, wantKeepAlive)
     
     // Set the "Date" HTTP Header if it isn't already set
