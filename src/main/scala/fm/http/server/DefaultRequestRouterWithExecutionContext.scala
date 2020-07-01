@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 Frugal Mechanic (http://frugalmechanic.com)
+ * Copyright 2020 Frugal Mechanic (http://frugalmechanic.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,17 +20,19 @@ import scala.concurrent.{ExecutionContext, Future}
 /**
  * This provides a base for both a RequestRouter and RequestHandler that is implemented by using a PartialFunction.
  *
- * Note: If you need a PartialFunction that takes an Execution context then see the
- *       DefaultRequestRouterWithExecutionContext version of this.
+ * Note: If you do not need a PartialFunction that takes an Execution context then see the DefaultRequestRouter
+ *       version of this.
  */
-abstract class DefaultRequestRouter extends RequestRouterBase with RequestRouterAndHandler {
-  protected val handler: PartialFunction[Request, Future[Response]]
-  
+abstract class DefaultRequestRouterWithExecutionContext extends RequestRouterBase with RequestRouterAndHandler {
+  protected val handler: PartialFunction[Request, ExecutionContext => Future[Response]]
+
   private[this] val thisHandler: Some[RequestHandler] = Some(this)
 
   final override def lookup(request: Request): Option[RequestHandler] = {
     if (handler.isDefinedAt(request)) thisHandler else None
   }
 
-  final override def apply(request: Request)(implicit executor: ExecutionContext): Future[Response] = handler(request)
+  final override def apply(request: Request)(implicit executor: ExecutionContext): Future[Response] = {
+    handler(request)(executor)
+  }
 }

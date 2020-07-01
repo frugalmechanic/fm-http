@@ -28,6 +28,10 @@ object ErrorRequestHandler {
   implicit def toErrorRequestHandler(f: (Request, Throwable) => Future[Response]): ErrorRequestHandler = new ErrorRequestHandler {
     override def apply(request: Request, ex: Throwable)(implicit executor: ExecutionContext): Future[Response] = f(request, ex)
   }
+
+  implicit def toErrorRequestHandler(f: (Request, Throwable, ExecutionContext) => Future[Response]): ErrorRequestHandler = new ErrorRequestHandler {
+    override def apply(request: Request, ex: Throwable)(implicit executor: ExecutionContext): Future[Response] = f(request, ex, executor)
+  }
 }
 
 trait ErrorRequestHandler {

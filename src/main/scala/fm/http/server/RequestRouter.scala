@@ -63,6 +63,11 @@ trait RequestRouter extends WithFilter[RequestRouter] {
   /**
    * If this request router does not match a request then send the request to the specified default handler
    */
+  final def withDefaultHandler(handler: (Request, ExecutionContext) => Future[Response]): RequestRouter = OrElseRequestRouter(this, SingleHandlerRequestRouter(handler))
+
+  /**
+   * If this request router does not match a request then send the request to the specified default handler
+   */
   final def withDefaultHandler(handler: RequestHandler): RequestRouter = OrElseRequestRouter(this, SingleHandlerRequestRouter(handler))
 
   /**
@@ -71,6 +76,11 @@ trait RequestRouter extends WithFilter[RequestRouter] {
    * This is for backwards compatibility from when ErrorRequestHandler was a Function2[Requestm, Throwable, Future[Response]]
    */
   final def withErrorHandler(handler: (Request, Throwable) => Future[Response]): RequestRouter = ErrorHandlerRequestRouter(this, handler)
+
+  /**
+   * If a RequestHandler throws an Exception then run this handler.  Useful for showing an Error Page when a request fails
+   */
+  final def withErrorHandler(handler: (Request, Throwable, ExecutionContext) => Future[Response]): RequestRouter = ErrorHandlerRequestRouter(this, handler)
 
   /**
    * If a RequestHandler throws an Exception then run this handler.  Useful for showing an Error Page when a request fails

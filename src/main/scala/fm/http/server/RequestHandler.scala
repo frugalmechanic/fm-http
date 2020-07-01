@@ -24,6 +24,10 @@ object RequestHandler {
     def apply(request: Request)(implicit executor: ExecutionContext): Future[Response] = f(request)
   }
 
+  implicit def toRequestHandler(f: (Request, ExecutionContext) => Future[Response]): RequestHandler = new RequestHandler {
+    def apply(request: Request)(implicit executor: ExecutionContext): Future[Response] = f(request, executor)
+  }
+
   def constant(response: Response) = new RequestHandler {
     private[this] val res: Future[Response] = Future.successful(response)
     def apply(request: Request)(implicit executor: ExecutionContext): Future[Response] = res
