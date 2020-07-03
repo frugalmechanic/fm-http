@@ -20,7 +20,6 @@ import fm.common.Implicits._
 import fm.lazyseq.LazySeq
 import io.netty.buffer.{ByteBuf, Unpooled}
 import java.io.{File, RandomAccessFile}
-import java.nio.channels.ClosedChannelException
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
@@ -187,6 +186,8 @@ object TestClientAndServer {
       val uploadFile: File = File.createTempFile("upload", ".file")
       request.content.writeToFile(uploadFile, limit).map{ _ =>
         Response.Ok("OK")
+      }.recover{
+        case _: BodyTooLargeException => Response(Status.REQUEST_ENTITY_TOO_LARGE, "Request Entity Too Large")
       }
     }
 
@@ -338,11 +339,11 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     }
   }
 
-  private def postFile(path: String, content: LinkedHttpContent): Future[Boolean] = {
+  private def postFile(path: String, content: LinkedHttpContent, expectedResponseCode: Int = 200, expectedResponseBody: String = "OK"): Future[Boolean] = {
     client.postAsync(makeUrl(path), content).map{ response: AsyncResponse =>
-      response.status.code should equal (200)
+      response.status.code shouldBe expectedResponseCode
       val body: Future[String] = response.body.map{ _.readToString() }.getOrElse(Future.successful(""))
-      Await.result(body, 60.seconds) shouldBe ("OK")
+      Await.result(body, 60.seconds) shouldBe expectedResponseBody
       true
     }
   }
@@ -449,9 +450,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   }
 
   test("Single Request post Large Response Body - writeToFile Exceeds Maximum Length") {
-    intercept[ClosedChannelException] {
-      Await.result(postFile(s"/upload_file/$OneMB", makeLinkedHttpContent(OneMB*10)), 60.seconds)
-    }
+    Await.result(postFile(s"/upload_file/$OneMB", makeLinkedHttpContent(OneMB*10), 413, "Request Entity Too Large"), 60.seconds)
   }
 
   test("Parallel Sync Requests with Large Response Body (200 Requests, 1 MB)") {

@@ -76,7 +76,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   def readToByteArray(maxLength: Long = Long.MaxValue): Future[Array[Byte]] = {
     foldLeft(new ByteArrayOutputStream){ (out: ByteArrayOutputStream, buf: ByteBuf) =>
       buf.readBytes(out, buf.readableBytes())
-      require(out.size() <= maxLength, s"Body exceeds maxLength.  Body Length (so far): ${out.size}  Specified Max Length: $maxLength")
+      if (out.size() > maxLength) throw new BodyTooLargeException(s"Body exceeds maxLength.  Body Length (so far): ${out.size}  Specified Max Length: $maxLength")
       out
     }.map{ _.toByteArray }
   }
@@ -100,7 +100,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   def readToStringWithCharset(encoding: Charset, maxLength: Long = Long.MaxValue): Future[String] = {
     foldLeft(new StringBuilder){ (sb: StringBuilder, buf: ByteBuf) =>
       sb.append(buf.toString(encoding))
-      require(sb.length <= maxLength, s"Body exceeds maxLength.  Body Length (so far): ${sb.length}  Specified Max Length: $maxLength")
+      if (sb.length > maxLength) throw new BodyTooLargeException(s"Body exceeds maxLength.  Body Length (so far): ${sb.length}  Specified Max Length: $maxLength")
       sb
     }.map{ _.toString }
   }
@@ -112,12 +112,13 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
 
   def writeToFile(file: File, maxLength: Long): Future[Unit] = {
     val os: FileOutputStream = new FileOutputStream(file)
-    var bytesWritten: Long = 0
+    var bytesWritten: Long = 0L
+
     val f: Future[Unit] = foldLeft(os){ (os, buf) =>
-      val readablBytes: Int = buf.readableBytes()
-      bytesWritten += readablBytes
-      buf.readBytes(os, readablBytes)
-      require(bytesWritten <= maxLength, s"Body exceeds maxLength.  Body Length (so far): $bytesWritten  Specified Max Length: $maxLength")
+      val readableBytes: Int = buf.readableBytes()
+      bytesWritten += readableBytes
+      if (bytesWritten > maxLength) throw new BodyTooLargeException(s"Body exceeds maxLength.  Body Length (so far): $bytesWritten  Specified Max Length: $maxLength")
+      buf.readBytes(os, readableBytes)
       os
     }.map{ _ => Unit }
     
