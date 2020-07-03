@@ -164,9 +164,22 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   
   private def foldLeft0[B](chunk: Future[Option[LinkedHttpContent]])(z: B, op: (B, ByteBuf) => B, p: Promise[B]): Unit = {
     if (logger.isTraceEnabled) logger.trace("foldLeft0")
-    
-    ctx.read()
-    
+
+    if (chunk.isCompleted) {
+      if (logger.isTraceEnabled) {
+        // A None is okay but a Some(LinkedHttpContent) is not expected if we haven't called ctx.read()
+        val isUnexpected: Boolean = chunk.value.get match {
+          case Success(content: Option[linkedHttpContent]) => content.isDefined
+          case Failure(_) => true // Let's log this too
+        }
+
+        if (isUnexpected) logger.trace("chunk is already complete?! "+chunk)
+      }
+    } else {
+      if (logger.isTraceEnabled) logger.trace("ctx.read()")
+      ctx.read()
+    }
+
     chunk.onComplete{ t: Try[Option[LinkedHttpContent]] =>
       t match {
         case Failure(ex) => p.failure(ex)
@@ -174,7 +187,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
           case None => hasBeenFullyRead.set(true); p.success(z)
           case Some(linkedContent) =>
             // Wrap the op in a try in case it throws an exception
-            val t = Try{ op(z, linkedContent.content()) }
+            val t: Try[B] = Try{ op(z, linkedContent.content()) }
             linkedContent.release() // Release the ByteBuf reference since we've now read the data
             t match {
               case Failure(ex)   => p.failure(ex); ctx.close()
@@ -186,17 +199,19 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   }
 
   def discardContent(): Future[Unit] = {
-    foldLeft(()){ (_, buf) => Unit }
+    if (logger.isTraceEnabled) logger.trace("discardContent()")
+    foldLeft(()){ (_, _: ByteBuf) => Unit }
   }
 
-  // TODO: Does this really need to return a Future[Unit]?
   def close(): Unit = try {
+    if (logger.isTraceEnabled) logger.trace("close()")
+
     // This can throw an exception if foldLeft is also called
     // in a concurrent thread at the same time but that's okay.
     // What's NOT okay is trying to set foldLeftCalled from here
     // since it's set in foldLeft()
     if (!foldLeftCalled.get) discardContent() // TODO: is this safe since the foldLeft in discardContent is asynchronous?
   } catch {
-    case ex: Exception => // ok
+    case _: Exception => // ok
   }
 }

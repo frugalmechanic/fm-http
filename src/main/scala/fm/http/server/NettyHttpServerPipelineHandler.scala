@@ -65,6 +65,8 @@ final class NettyHttpServerPipelineHandler(
   /** The number of requests that we've handled for this connection */
   private[this] var numRequestsHandled: Long = 0L
 
+  private[this] var contentBuilder: LinkedHttpContentBuilder = null
+
   /** This is initialized by channelActive */
   private[this] implicit var executionContext: ExecutionContext = null
 
@@ -76,6 +78,7 @@ final class NettyHttpServerPipelineHandler(
     executionContext = ExecutionContext.fromExecutor(ctx.channel().eventLoop())
     
     // Allow the first message to be read
+    if (logger.isTraceEnabled) logger.trace("ctx.read()")
     ctx.read()
 
     // JavaDocs for ChannelGroup (https://netty.io/4.1/api/io/netty/channel/group/ChannelGroup.html) state:
@@ -95,8 +98,6 @@ final class NettyHttpServerPipelineHandler(
     trace("channelReadComplete")(ctx)
     super.channelReadComplete(ctx)
   }
-  
-  private[this] var contentBuilder: LinkedHttpContentBuilder = null
   
   protected def channelRead0(ctx: ChannelHandlerContext, obj: HttpObject): Unit = obj match {
 //    // This is a complete HttpRequest -- NOT CURRENTLY USED SINCE THIS CONDITION DOESN'T GET TRIGGERED UNDER NORMAL USE
@@ -453,7 +454,13 @@ final class NettyHttpServerPipelineHandler(
     
     res match {
       // If this is a keep-alive connection then we allow reading of the next request otherwise we close the connection
-      case Success(_) => if (readNextRequest) ctx.read() else ctx.close()
+      case Success(_) =>
+        if (readNextRequest) {
+          if (logger.isTraceEnabled) logger.trace("ctx.read()")
+          ctx.read()
+        } else {
+          ctx.close()
+        }
       case Failure(ex) => trace("onResponseComplete - FAILURE", ex)
     }
   }

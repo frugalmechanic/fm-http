@@ -229,7 +229,7 @@ object TestClientAndServer {
     require(buf.readableBytes() == sizeToGenerate)
 
     val remainingBytes: Long = sizeBytes - sizeToGenerate
-    def nextChunk: Option[LinkedHttpContent] = if (remainingBytes <= 0) None else  Some(makeLinkedHttpContent(remainingBytes, idx + sizeToGenerate))
+    def nextChunk: Option[LinkedHttpContent] = if (remainingBytes <= 0) None else Some(makeLinkedHttpContent(remainingBytes, idx + sizeToGenerate))
 
     LinkedHttpContent.async(
       buf,

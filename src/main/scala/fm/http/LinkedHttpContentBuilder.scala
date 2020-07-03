@@ -16,6 +16,7 @@
 package fm.http
 
 import fm.common.Implicits._
+import fm.common.Logging
 import java.lang.ref.WeakReference
 import java.io.Closeable
 import io.netty.buffer.ByteBuf
@@ -43,7 +44,7 @@ object LinkedHttpContentBuilder {
   private def nonEmpty(content: HttpContent): Boolean = !isEmpty(content)
 }
 
-final case class LinkedHttpContentBuilder() extends Closeable {
+final case class LinkedHttpContentBuilder() extends Logging with Closeable {
   import LinkedHttpContentBuilder.nonEmpty
   
   @volatile private var done: Boolean = false
@@ -86,6 +87,8 @@ final case class LinkedHttpContentBuilder() extends Closeable {
     if (done && next.isEmpty) return this
     
     require(!done, "Already Done!")
+
+    if (logger.isTraceEnabled) logger.trace(s"LinkedHttpContentBuilder += $next")
     
     if (first) {
       // Clear the weak reference
@@ -100,9 +103,10 @@ final case class LinkedHttpContentBuilder() extends Closeable {
         done = true
         
       case Some(buf) =>
-        val current = nextChunk
-        nextChunk = Promise()
-        current.success(Some(LinkedHttpContent(buf, nextChunk.future)))
+        val current: Promise[Option[LinkedHttpContent]] = nextChunk
+        val newNextChunk: Promise[Option[LinkedHttpContent]] = Promise()
+        current.success(Some(LinkedHttpContent(buf, newNextChunk.future)))
+        nextChunk = newNextChunk
     }
     
     this
@@ -110,6 +114,8 @@ final case class LinkedHttpContentBuilder() extends Closeable {
   
   def +=(cause: Throwable): this.type = synchronized {
     if (done) return this
+
+    if (logger.isTraceEnabled) logger.trace(s"LinkedHttpContentBuilder += Throwable - $cause")
     
     nextChunk.failure(cause)
     nextChunk = null
