@@ -15,19 +15,16 @@
  */
 package fm.http.client
 
+import fm.http._
+import fm.common.Logging
 import java.io.{File, FileNotFoundException, IOException, RandomAccessFile}
 import java.net.SocketAddress
-
 import io.netty.channel._
 import io.netty.channel.group.ChannelGroup
 import io.netty.handler.codec.http._
 import io.netty.util.ReferenceCountUtil
-
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
-
-import fm.http._
-import fm.common.Logging
 
 object NettyHttpClientPipelineHandler {
   io.netty.handler.codec.http.multipart.DiskAttribute.deleteOnExitTemporaryFile = false  // DO NOT USE File.deleteOnExit() since it uses an append-only LinkedHashSet
@@ -156,8 +153,8 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
     responsePromise.trySuccess(response)
     responsePromise = null
   }
-  
-  def writeRequest(uri: String, request: Request, promise: Promise[AsyncResponse], channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {
+
+  private def writeRequest(uri: String, request: Request, promise: Promise[AsyncResponse], channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {
     trace("writeRequest")
     
     require(responsePromise eq null, "Expected responsePromise to be null")
@@ -265,10 +262,10 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
     HttpUtil.setContentLength(request, length)
     HttpUtil.setTransferEncodingChunked(request, false)
     
-    ctx.write(request)
-    ctx.writeAndFlush(new DefaultFileRegion(raf.getChannel, 0, length)).flatMap{ _ => 
-      ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT)
-    }.onComplete{
+    ctx.write(request, ctx.voidPromise())
+    ctx.write(new DefaultFileRegion(raf.getChannel, 0, length), ctx.voidPromise())
+
+    ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{
       case Success(_) => channelPromise.setSuccess()
       case Failure(ex) => fail(promise, ex, channelPromise)
     }

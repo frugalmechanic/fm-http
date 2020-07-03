@@ -34,24 +34,24 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
   private[this] val waitingQueue: Queue[Promise[Channel]] = new LinkedBlockingQueue(maxQueueSize)
   private[this] val idleChannels: Deque[IdleChannel] = new ConcurrentLinkedDeque()
 
-  def isEmpty: Boolean = idleChannels.isEmpty && waitingQueue.isEmpty
+  def isEmpty: Boolean = synchronized{
+    idleChannels.isEmpty && waitingQueue.isEmpty
+  }
 
-  def closeIdleChannels(): Unit = {
+  def closeIdleChannels(): Unit = synchronized {
     if (idleChannels.isEmpty()) return
-    
-    synchronized { 
-      trace("closeIdleChannels()")
-      
-      val oldestAge: Long = System.currentTimeMillis() - maxIdleMillis
-      
-      val it: java.util.Iterator[IdleChannel] = idleChannels.iterator()
-      
-      while (it.hasNext) {
-        val idle: IdleChannel = it.next()
-        if (idle.lastActivity < oldestAge) {
-          idle.channel.close()
-          it.remove()
-        }
+
+    trace("closeIdleChannels()")
+
+    val oldestAge: Long = System.currentTimeMillis() - maxIdleMillis
+
+    val it: java.util.Iterator[IdleChannel] = idleChannels.iterator()
+
+    while (it.hasNext) {
+      val idle: IdleChannel = it.next()
+      if (idle.lastActivity < oldestAge) {
+        idle.channel.close()
+        it.remove()
       }
     }
   }
@@ -74,7 +74,7 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
       
       res.onComplete {
         case Success(ch) => ch.closeFuture().onComplete{ case _ => remove(ch) }
-        case Failure(ex) => onRemove()
+        case Failure(_) => onRemove()
       }
       
       res
@@ -112,16 +112,15 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
       else if (!waiting.trySuccess(ch)) doRetry = true
       
     } while (doRetry)
-    
   }
   
   private def remove(ch: Channel): Unit = synchronized {
     trace(s"remove($ch)")
     
-    var done = false
-    val it = idleChannels.iterator()
+    var done: Boolean = false
+    val it: java.util.Iterator[IdleChannel] = idleChannels.iterator()
     
-    while(it.hasNext() && !done) {
+    while (it.hasNext() && !done) {
       val idle: IdleChannel = it.next()
       if (idle.channel === ch) {
         it.remove()

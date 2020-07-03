@@ -33,7 +33,7 @@ object NettyFutureWrapper {
  * Wraps Netty's Future as a Scala Future while ensuring that the ExecutionContext
  * is Netty's EventLoopGroup
  */
-final case class NettyFutureWrapper[T](val f: NettyFuture[T]) extends Future[T] {
+final case class NettyFutureWrapper[T](f: NettyFuture[T]) extends Future[T] {
   
   def isCompleted: Boolean = f.isDone
   
