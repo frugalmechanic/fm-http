@@ -61,6 +61,9 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
   // If the Response has "Connection: close" then we set this
   private[this] var isConnectionClose: Boolean = false
 
+  // Are we currently sending a request?
+  private[this] var isSending: Boolean = false
+
   // This can be set to false when we close the channel due to the
   // isConnectionClose variable being true.
   // Note: We can't just rely on the isConnectionClose variable
@@ -130,7 +133,15 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
           failPromisesOnChannelInactive = false
           ctx.close()
         } else {
-          pool.release(ctx.channel())
+          if (isSending) {
+            trace("channelReadImpl - isSending - ctx.close()")
+            // If we have received a response while we are still sending then we do not want to release this back
+            // to the pool.  We should probably just close the channel (the server side is probably closing it anyways)
+            ctx.close()
+          } else {
+            trace("channelReadImpl - pool.release()")
+            pool.release(ctx.channel())
+          }
         }
       }
   }
@@ -155,11 +166,18 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
     responsePromise = promise
     
     val version: HttpVersion = HttpVersion.HTTP_1_1
-    
+
+    isSending = true
+
     request match {
       case full:  FullRequest  => sendFullRequest(promise, prepareRequest(full.toFullHttpRequest(version, uri)), channelPromise)
       case async: AsyncRequest => sendAsyncRequest(promise, prepareRequest(async.toHttpRequest(version, uri)), async.head, channelPromise)
       case file:  FileRequest  => sendFileRequest(promise, prepareRequest(file.toHttpRequest(version, uri)), file.file, channelPromise)
+    }
+
+    channelPromise.onComplete{
+      case Success(_) => isSending = false
+      case Failure(_) => // Do nothing
     }
     
     // Allow the HttpResponse message to be read
