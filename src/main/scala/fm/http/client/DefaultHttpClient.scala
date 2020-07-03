@@ -44,6 +44,14 @@ object DefaultHttpClient extends Logging {
 //  def close(): Unit = {
 //    workerGroup.shutdownGracefully(1, 15, TimeUnit.SECONDS)
 //  }
+
+  // maxChunkSize Notes:
+  //   There is some chatter about this config not being useful and it going away in Netty 5.x and at least one
+  //   example of a library setting this to Int.MaxValue.  So let's set this to 1 MB for now.
+  private val MaxInitialLineLength: Int = 4096       // This is the default value
+  private val MaxHeaderSize: Int = 8192              // This is the default value
+  private val MaxChunkSize: Int = 1048576            // This is increased from the 8192 default.
+  private val FailOnMissingResponse: Boolean = false // This is the default value
   
   private val workerGroup: EventLoopGroup = {
     NativeHelpers.makeClientEventLoopGroup(0, new ThreadFactory("fm-http-client-worker", daemon = true))
@@ -368,8 +376,8 @@ final case class DefaultHttpClient(
            p.addLast("ssl", sslCtx.newHandler(ch.alloc(), host, port))
          }
 
-         p.addLast("httpcodec", new HttpClientCodec())
-         //p.addLast("decompressor",  new NettyContentDecompressor())
+         p.addLast("httpcodec", new HttpClientCodec(DefaultHttpClient.MaxInitialLineLength, DefaultHttpClient.MaxHeaderSize, DefaultHttpClient.MaxChunkSize, DefaultHttpClient.FailOnMissingResponse))
+         //p.addLast("decompressor", new NettyContentDecompressor())
 
          if (autoDecompress) {
           p.addLast("decompressor", new io.netty.handler.codec.http.HttpContentDecompressor())

@@ -16,7 +16,11 @@ object HttpServerOptions {
 
   val defaultMaxInitialLineLength: Int = 4096
   val defaultMaxHeaderSize: Int = 8192
-  val defaultMaxChunkSize: Int = 8192
+
+  // maxChunkSize Notes:
+  //   There is some chatter about this config not being useful and it going away in Netty 5.x and at least one
+  //   example of a library setting this to Int.MaxValue.  So let's set this to 1 MB for now.
+  val defaultMaxChunkSize: Int = 1048576
 
   /**
    * This allows you to override the Request.remoteIp with an IP Address from an HTTP header field
