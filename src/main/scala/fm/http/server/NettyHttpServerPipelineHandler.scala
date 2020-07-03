@@ -25,6 +25,7 @@ import io.netty.handler.codec.http._
 import io.netty.handler.stream.{ChunkedFile, ChunkedStream}
 import io.netty.util.{AttributeKey, CharsetUtil}
 import java.io.{File, FileNotFoundException, InputStream, RandomAccessFile}
+import java.nio.channels.ClosedChannelException
 import java.util.concurrent.atomic.AtomicLong
 import java.util.Date
 import scala.concurrent.{ExecutionContext, Future}
@@ -91,6 +92,7 @@ final class NettyHttpServerPipelineHandler(
   /** This is called once when a client disconnects from our server OR we close the connection */
   override def channelInactive(ctx: ChannelHandlerContext): Unit = {
     trace("channelInactive")(ctx)
+    if (null != contentBuilder && !contentBuilder.isDone) contentBuilder += (new ClosedChannelException())
     super.channelInactive(ctx)
   }
   
