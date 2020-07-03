@@ -210,14 +210,15 @@ final case class DefaultHttpClient(
   }
   
   // Access to this should be synchronized (which means we shouldn't even bother with a ConcurrentHashMap...)
-  private[this] val endpointMap: ConcurrentHashMap[EndPoint, WeakReference[ChannelPool]] = new ConcurrentHashMap()
+  private[this] val endpointMap: ConcurrentHashMap[EndPoint, ChannelPool] = new ConcurrentHashMap()
   
   private def closeIdleConnections(): Unit = endpointMap.synchronized {
-    val it = endpointMap.values().iterator()
+    val it: java.util.Iterator[ChannelPool] = endpointMap.values().iterator()
     
-    while(it.hasNext()) {
-      val pool: ChannelPool = it.next().get
-      if (null == pool) it.remove() else pool.closeIdleChannels()
+    while (it.hasNext()) {
+      val pool: ChannelPool = it.next()
+      pool.closeIdleChannels()
+      if (pool.isEmpty) it.remove()
     }
   }
   
@@ -228,13 +229,11 @@ final case class DefaultHttpClient(
     val endPoint: EndPoint = EndPoint(host, port, ssl, proxy)
     
     if (useConnectionPool) endpointMap.synchronized {
-      val poolRef: WeakReference[ChannelPool] = endpointMap.get(endPoint)
-      
-      var pool: ChannelPool = if (null != poolRef) poolRef.get else null
-      
+      var pool: ChannelPool = endpointMap.get(endPoint)
+
       if (null == pool) {
         pool = new ChannelPool(endPoint.prettyString, makeNewChannel(endPoint), limit = maxConnectionsPerHost, maxQueueSize = maxRequestQueuePerHost, maxIdleMillis = maxConnectionIdleDuration.toMillis)
-        endpointMap.put(endPoint, new WeakReference(pool))
+        endpointMap.put(endPoint, pool)
       }
       
       pool.checkout()

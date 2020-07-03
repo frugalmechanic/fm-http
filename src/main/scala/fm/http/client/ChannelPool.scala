@@ -34,6 +34,8 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
   private[this] val waitingQueue: Queue[Promise[Channel]] = new LinkedBlockingQueue(maxQueueSize)
   private[this] val idleChannels: Deque[IdleChannel] = new ConcurrentLinkedDeque()
 
+  def isEmpty: Boolean = idleChannels.isEmpty && waitingQueue.isEmpty
+
   def closeIdleChannels(): Unit = {
     if (idleChannels.isEmpty()) return
     
@@ -42,9 +44,9 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
       
       val oldestAge: Long = System.currentTimeMillis() - maxIdleMillis
       
-      val it = idleChannels.iterator()
+      val it: java.util.Iterator[IdleChannel] = idleChannels.iterator()
       
-      while(it.hasNext) {
+      while (it.hasNext) {
         val idle: IdleChannel = it.next()
         if (idle.lastActivity < oldestAge) {
           idle.channel.close()
@@ -53,7 +55,7 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
       }
     }
   }
-  
+
   def checkout(): Future[Channel] = synchronized {
     trace("checkout()")
     
