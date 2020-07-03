@@ -190,7 +190,9 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
             val t: Try[B] = Try{ op(z, linkedContent.content()) }
             linkedContent.release() // Release the ByteBuf reference since we've now read the data
             t match {
-              case Failure(ex)   => p.failure(ex); ctx.close()
+              case Failure(ex)   =>
+                if (logger.isTraceEnabled) logger.trace(s"foldLeft0 - Failure $ex")
+                p.failure(ex) // Note: We do not need to call ctx.close() here.  That will be handled in onResponseComplete()
               case Success(newZ) => foldLeft0(linkedContent.tail)(newZ, op, p)
             }
         }
