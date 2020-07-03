@@ -29,6 +29,7 @@ import io.netty.util.concurrent.GlobalEventExecutor
 import fm.common.Implicits._
 import fm.common.Logging
 import fm.http.NativeHelpers
+import io.netty.handler.flow.FlowControlHandler
 
 object HttpServer {
   
@@ -106,6 +107,7 @@ final case class HttpServer (
          p.addLast("encoder",       new HttpResponseEncoder())
          p.addLast("compressor",    new NettyContentCompressor())
          p.addLast("chunkedWriter", new ChunkedWriteHandler())
+         p.addLast("flowControl",   new FlowControlHandler()) // We only want 1 message per each ctx.read() call
          p.addLast("handler",       new NettyHttpServerPipelineHandler(allChannels, completeRouter, serverOptions))
          
        }

@@ -23,6 +23,7 @@ import io.netty.channel._
 import io.netty.channel.group.{ChannelGroup, DefaultChannelGroup}
 import io.netty.channel.socket.SocketChannel
 import io.netty.handler.codec.http.{HttpClientCodec, HttpMethod}
+import io.netty.handler.flow.FlowControlHandler
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory
 import io.netty.handler.ssl.{SslContext, SslContextBuilder}
 import io.netty.util.concurrent.GlobalEventExecutor
@@ -375,6 +376,7 @@ final case class DefaultHttpClient(
          }
 
          //p.addLast("chunkedWriter", new ChunkedWriteHandler())
+         p.addLast("flowControl", new FlowControlHandler()) // We only want 1 message per each ctx.read() call
          p.addLast("handler", new NettyHttpClientPipelineHandler(allChannels))
          
        }

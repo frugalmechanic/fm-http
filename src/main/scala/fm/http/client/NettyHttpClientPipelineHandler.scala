@@ -87,25 +87,13 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
     super.channelInactive(ctx)
   }
   
-  /** After calling a ctx.read() did we get a full message? */
-  private[this] var gotMessage: Boolean = false
-  
-  /**
-   * This gets called whenever a ctx.read() "completes" which may or may not have triggered a channelRead(...)
-   * which means we need to keep track of whether or not we need to call ctx.read() to get an actual message
-   * that we can handle with channelRead(...)
-   */
   override def channelReadComplete(ctx: ChannelHandlerContext): Unit = {
-    trace(s"channelReadComplete - gotMessage: $gotMessage")(ctx)
-    
-    if (gotMessage) gotMessage = false // We got a message.  Good!  Reset the Flag
-    else ctx.read() // We didn't get a message so we need to trigger another ctx.read()
-    
+    trace(s"channelReadComplete")(ctx)
+
     super.channelReadComplete(ctx)
   }
   
   override protected def channelRead(ctx: ChannelHandlerContext, msg: AnyRef): Unit = {
-    gotMessage = true
     if (logger.isTraceEnabled) trace("channelRead - "+msg.getClass.getSimpleName)(ctx)
     channelReadImpl(msg)(ctx)
     ReferenceCountUtil.release(msg)
