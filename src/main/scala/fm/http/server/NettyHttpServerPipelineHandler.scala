@@ -57,7 +57,7 @@ final class NettyHttpServerPipelineHandler(
   channelGroup: ChannelGroup,
   router: RequestRouter,
   options: HttpServerOptions
-)(implicit executor: ExecutionContext) extends SimpleChannelInboundHandler[HttpObject] with Logging {
+) extends SimpleChannelInboundHandler[HttpObject] with Logging {
   import NettyHttpServerPipelineHandler._
   
   private[this] val id: Long = ID.incrementAndGet()
@@ -65,13 +65,15 @@ final class NettyHttpServerPipelineHandler(
   /** The number of requests that we've handled for this connection */
   private[this] var numRequestsHandled: Long = 0L
 
-  private[this] val requestHandlerExecutionContextProvider: RequestHandlerExecutionContextProvider = {
-    options.requestHandlerExecutionContextProvider.getOrElse{ RequestHandlerExecutionContextProvider.Static(executor) }
-  }
-  
+  /** This is initialized by channelActive */
+  private[this] implicit var executionContext: ExecutionContext = null
+
   /** This is called once when a client connects to our server */
   override def channelActive(ctx: ChannelHandlerContext): Unit = {
     trace("channelActive")(ctx)
+
+    // Use the EventLoop for our channel for all Future callbacks in this class
+    executionContext = ExecutionContext.fromExecutor(ctx.channel().eventLoop())
     
     // Allow the first message to be read
     ctx.read()
@@ -177,9 +179,14 @@ final class NettyHttpServerPipelineHandler(
     val future: Future[Response] = router.lookup(r) match {
       case Some(handler) => 
         try {
+          val handlerExecutionContext: ExecutionContext = options.requestHandlerExecutionContextProvider match {
+            case Some(provider) => provider(r)
+            case None => implicitly // Use the default ExecutionContext everything else in this class uses
+          }
+
           // TODO: We might want to run the actual "handler(r)" code using the ExecutionContext returned by
           //       the requestHandlerExecutionContextProvider.
-          handler(r)(requestHandlerExecutionContextProvider(r))
+          handler(r)(handlerExecutionContext)
         } catch {
           case ex: Exception =>
             logger.error(s"Caught exception handling request: request", ex)

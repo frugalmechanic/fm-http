@@ -375,7 +375,7 @@ final case class DefaultHttpClient(
          }
 
          //p.addLast("chunkedWriter", new ChunkedWriteHandler())
-         p.addLast("handler",       new NettyHttpClientPipelineHandler(allChannels, executionContext))
+         p.addLast("handler", new NettyHttpClientPipelineHandler(allChannels))
          
        }
     })

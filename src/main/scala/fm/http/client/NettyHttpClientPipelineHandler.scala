@@ -45,11 +45,13 @@ object NettyHttpClientPipelineHandler {
   final case class URIRequestAndPromise(uri: String, request: Request, promise: Promise[AsyncResponse])
 }
 
-final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, executionContext: ExecutionContext) extends ChannelInboundHandlerAdapter with ChannelOutboundHandler with Logging {
+final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends ChannelInboundHandlerAdapter with ChannelOutboundHandler with Logging {
   import NettyHttpClientPipelineHandler._
   
   private[this] val id: Long = ID.incrementAndGet()
-  private[this] implicit val executionCtx: ExecutionContext = executionContext
+
+  /** This is initialized by channelActive */
+  private[this] implicit var executionContext: ExecutionContext = null
   
   @volatile private var pool: ChannelPool = null
 
@@ -69,6 +71,9 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup, execution
   /** This is called once when a client connects to our server */
   override def channelActive(ctx: ChannelHandlerContext): Unit = {
     trace("channelActive")(ctx)
+
+    // Use the EventLoop for our channel for all Future callbacks in this class
+    executionContext = ExecutionContext.fromExecutor(ctx.channel().eventLoop())
 
     channelGroup.add(ctx.channel())
     
