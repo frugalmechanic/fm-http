@@ -16,7 +16,7 @@
 package fm.http.client
 
 import fm.common.Implicits._
-import fm.common.{Logging, ScheduledTaskRunner, URI, URL}
+import fm.common.{Logging, URI, URL}
 import fm.http._
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel._
@@ -27,7 +27,7 @@ import io.netty.handler.flow.FlowControlHandler
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory
 import io.netty.handler.ssl.{SslContext, SslContextBuilder}
 import io.netty.util.concurrent.GlobalEventExecutor
-import java.util.concurrent.{ConcurrentHashMap, TimeoutException}
+import java.util.concurrent.{ConcurrentHashMap, ScheduledFuture, TimeoutException}
 import java.nio.charset.Charset
 import java.lang.ref.WeakReference
 import java.net.MalformedURLException
@@ -58,7 +58,6 @@ object DefaultHttpClient extends Logging {
   }
 
   private implicit val executionContext: ExecutionContext = ExecutionContext.fromExecutorService(workerGroup)
-  private val timer: ScheduledTaskRunner = ScheduledTaskRunner("HttpExecutionContext.Timer") // TODO: use the EventLoopGroup
 
   /**
    * Simple ThreadFactory that allows us to name the threads something reasonable and set the daemon flag
@@ -82,16 +81,16 @@ object DefaultHttpClient extends Logging {
   
   private val IdleCheckDuration: FiniteDuration = 5.seconds
   
-  private def enableTimeoutTask[T](promise: Promise[T], duration: Duration): TimeoutTask[T] = {
+  private def enableTimeoutTask[T](promise: Promise[T], duration: FiniteDuration): TimeoutTask[T] = {
     val task: TimeoutTask[T] = new TimeoutTask(new WeakReference(promise))
-    val scheduledFuture = timer.schedule(task, duration.asInstanceOf[FiniteDuration])
+    val scheduledFuture: ScheduledFuture[_] = workerGroup.schedule(task, duration.length, duration.unit)
     
     // Cancel the scheduled task if the future completes normally
     promise.future.onComplete{
-      case Success(_) => scheduledFuture.cancel()
+      case Success(_) => scheduledFuture.cancel(false)
       case Failure(ex) => ex match {
         case _: TimeoutTaskTimeoutException => // Ok
-        case _ => scheduledFuture.cancel()
+        case _ => scheduledFuture.cancel(false)
       }
     }
     
@@ -99,7 +98,7 @@ object DefaultHttpClient extends Logging {
   }
   
   private def enableIdleTask(client: DefaultHttpClient): Unit = {
-    timer.schedule(new ConnectionIdleTask(new WeakReference(client)), IdleCheckDuration)
+    workerGroup.schedule(new ConnectionIdleTask(new WeakReference(client)), IdleCheckDuration.length, IdleCheckDuration.unit)
   }
   
   private class ConnectionIdleTask(ref: WeakReference[DefaultHttpClient]) extends Runnable {
@@ -107,7 +106,7 @@ object DefaultHttpClient extends Logging {
       val client: DefaultHttpClient = ref.get()
       if (null != client) {
         client.closeIdleConnections()
-        timer.schedule(this, IdleCheckDuration)
+        workerGroup.schedule(this, IdleCheckDuration.length, IdleCheckDuration.unit)
       }
     }
   }
@@ -161,7 +160,6 @@ final case class DefaultHttpClient(
   import DefaultHttpClient.{EndPoint, TimeoutTask, workerGroup}
 
   override implicit def executionContext: ExecutionContext = DefaultHttpClient.executionContext
-  override def timer: ScheduledTaskRunner = DefaultHttpClient.timer
   
   require(maxConnectionsPerHost > 0, "maxConnectionsPerHost must be > 0")
   require(maxRedirectCount >= 0, "maxRedirectCount must be >= 0")
@@ -273,7 +271,7 @@ final case class DefaultHttpClient(
     
     val promise: Promise[AsyncResponse] = Promise()
     
-    val timeoutTask: TimeoutTask[_] = if (timeout.isFinite()) DefaultHttpClient.enableTimeoutTask(promise, timeout) else null
+    val timeoutTask: TimeoutTask[_] = if (timeout.isFinite()) DefaultHttpClient.enableTimeoutTask(promise, timeout.asInstanceOf[FiniteDuration]) else null
     
     getChannel(host, port, ssl, proxy).onComplete {
       case Success(ch) =>
@@ -322,7 +320,7 @@ final case class DefaultHttpClient(
     
     val ch: Channel = connectFuture.channel()
     
-    if (defaultConnectTimeout.isFinite()) DefaultHttpClient.enableTimeoutTask(promise, defaultConnectTimeout)
+    if (defaultConnectTimeout.isFinite()) DefaultHttpClient.enableTimeoutTask(promise, defaultConnectTimeout.asInstanceOf[FiniteDuration])
     
     promise.future.onComplete {
       case Success(_)  => 

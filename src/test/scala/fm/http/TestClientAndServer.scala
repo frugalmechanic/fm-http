@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
 import scala.concurrent.{Await, Future, Promise}
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 
 object TestClientAndServer {
@@ -257,7 +258,6 @@ object TestClientAndServer {
 // TODO: split this into a "stress test" mode and a "normal" unit testing mode
 final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAfterAll {
   import TestClientAndServer.{charForIdx, client, clientNoFollowRedirects, makeLinkedHttpContent, OneMB, port, requestCount}
-  import client.executionContext
   import fm.http.client._
   
   override def beforeAll(): Unit = {

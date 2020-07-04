@@ -15,7 +15,6 @@
  */
 package fm.http.client
 
-import fm.common.ScheduledTaskRunner
 import fm.http._
 import java.io.{Closeable, File}
 import java.nio.charset.{Charset, StandardCharsets}
@@ -71,8 +70,11 @@ object HttpClient {
 
 abstract class HttpClient extends Closeable {
 
+  /**
+   * If you make use of this then you cannot perform any blocking operations on it (especially any Await.result or
+   * Await.ready operations) otherwise you will risk a deadlock.
+   */
   implicit def executionContext: ExecutionContext
-  def timer: ScheduledTaskRunner
 
   def defaultMaxLength: Long
   def defaultHeaders: Headers
