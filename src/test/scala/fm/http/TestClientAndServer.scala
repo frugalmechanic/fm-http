@@ -17,6 +17,7 @@ package fm.http
 
 import fm.common.{ImmutableDate, Logging, ScheduledTaskRunner, TestHelpers}
 import fm.common.Implicits._
+import fm.http.client.DefaultHttpClient.TimeoutTaskTimeoutException
 import fm.lazyseq.LazySeq
 import io.netty.buffer.{ByteBuf, Unpooled}
 import java.io.{File, RandomAccessFile}
@@ -120,8 +121,7 @@ object TestClientAndServer {
 
   private val jsonLatin1Header: Headers = Headers(("Content-Type", s"${MimeTypes.JSON}; charset=ISO-8859-1"))
 
-  private implicit def responseToFugure(r: Response): Future[Response] = Future.successful(r)
-  import scala.concurrent.ExecutionContext.Implicits.global
+  private implicit def responseToFuture(r: Response): Future[Response] = Future.successful(r)
 
   protected val unwrappedHandler: PartialFunction[Request, Future[Response]] = (request: Request) => request match {
     case GET(simple"/${INT(code)}")       => Response(Status(code), Status(code).msg)
@@ -156,6 +156,8 @@ object TestClientAndServer {
 
     case GET("/file")                     => Response.Ok(UTF8Header, tmpFile)
     case GET("/random_access_file")       => Response.Ok(UTF8Header, makeRandomAccessFile("This is a random access file"))
+
+    case GET(simple"/delay/${INT(sleepMillis)}") => Thread.sleep(sleepMillis); Response(Status.OK, "Ok")
 
     case GET("/header_modifications")     => {
       implicit val r: Request = request
@@ -280,9 +282,10 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     expectedCode: Int,
     expectedBody: String,
     httpClient: HttpClient = client,
-    headers: Headers = Headers.empty
+    headers: Headers = Headers.empty,
+    timeout: Duration = Duration.Inf
   ): FullStringResponse = TestHelpers.withCallerInfo{
-    val f: Future[FullStringResponse] = getFullStringAsync(path, httpClient, headers)
+    val f: Future[FullStringResponse] = getFullStringAsync(path, httpClient, headers, timeout)
     val res: FullStringResponse = Await.result(f, 10.seconds)
     res.status.code should equal (expectedCode)
     res.body should equal (expectedBody)
@@ -305,9 +308,10 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   private def getFullStringAsync(
     path: String,
     httpClient: HttpClient = client,
-    headers: Headers = Headers.empty
+    headers: Headers = Headers.empty,
+    timeout: Duration = Duration.Inf
   ): Future[FullStringResponse] = {
-    httpClient.getFullString(makeUrl(path), headers)
+    httpClient.getFullString(makeUrl(path), headers, timeout)
   }
 
   private def postFullStringAsync(
@@ -606,6 +610,12 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
 
     response.headers.get("Hello") should equal (Some("World"))
     response.headers.date should equal (Some(ImmutableDate(1234567890000L)))
+  }
+
+  test("Client Timeout") {
+    an [TimeoutTaskTimeoutException] should be thrownBy {
+      getSync("/delay/1000", 999, "Not Used", timeout = 200.milliseconds)
+    }
   }
 
   test("Remote IP") {
