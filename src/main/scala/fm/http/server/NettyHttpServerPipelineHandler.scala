@@ -28,6 +28,7 @@ import java.io.{File, FileNotFoundException, InputStream, RandomAccessFile}
 import java.nio.channels.ClosedChannelException
 import java.util.concurrent.atomic.AtomicLong
 import java.util.Date
+import java.util.concurrent.TimeUnit
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
@@ -49,6 +50,10 @@ object NettyHttpServerPipelineHandler {
    * Is this channel currently processing a request?
    */
   def isProcessingRequest(ch: Channel): Boolean = Option(ch.attr(ProcessingRequestKey).get).getOrElse(false)
+
+  private class CloseContextRunnable(ctx: ChannelHandlerContext) extends Runnable {
+    override def run(): Unit = ctx.close()
+  }
 }
 
 /**
@@ -139,8 +144,13 @@ final class NettyHttpServerPipelineHandler(
     ctx.channel().attr(ProcessingRequestKey).set(true)
     
     val (request: Request, response: Future[Response]) = handle(nettyRequest, content)
-    
-    val wantKeepAlive: Boolean = HttpUtil.isKeepAlive(nettyRequest) && numRequestsHandled < options.maxRequestsPerConnection
+
+    // We only want keep-alive if:
+    //   1. The request wants it (either via HTTP 1.1 or an explicit "Connection: keep-alive" request header)
+    //   2. We are below our maxRequestsPerConnection
+    //   3. We have fully read the request.  If we have not fully read the request then something went wrong and the
+    //      connection will be automatically closed by us.  So we should let the client know in the response.
+    val wantKeepAlive: Boolean = HttpUtil.isKeepAlive(nettyRequest) && numRequestsHandled < options.maxRequestsPerConnection && request.isContentFullyRead
     
     // The Response Version should match the request version
     val version: HttpVersion = nettyRequest.protocolVersion()
@@ -309,7 +319,7 @@ final class NettyHttpServerPipelineHandler(
 
     ctx.write(response, ctx.voidPromise())
     ctx.write(obj, ctx.voidPromise())
-    ctx.write(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{ onResponseComplete(request, _, HttpUtil.isKeepAlive(response)) }
+    ctx.write(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{ onResponseComplete(request, _, isKeepAliveWithDebug(response), closeDelay(response)) }
     ctx.flush()
   }
   
@@ -359,8 +369,8 @@ final class NettyHttpServerPipelineHandler(
       // Make sure our RandomAccessFile got closed
       raf.close()
 
-      if (res.isFailure) onResponseComplete(request, res, HttpUtil.isKeepAlive(response))
-      else ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{ onResponseComplete(request, _, HttpUtil.isKeepAlive(response)) }
+      if (res.isFailure) onResponseComplete(request, res, isKeepAliveWithDebug(response), closeDelay(response))
+      else ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{ onResponseComplete(request, _, isKeepAliveWithDebug(response), closeDelay(response)) }
     }
   }
   
@@ -376,7 +386,7 @@ final class NettyHttpServerPipelineHandler(
       HttpUtil.setTransferEncodingChunked(response, false)
     }
     
-    ctx.writeAndFlush(response).onComplete{ onResponseComplete(request, _, HttpUtil.isKeepAlive(response)) }
+    ctx.writeAndFlush(response).onComplete{ onResponseComplete(request, _, isKeepAliveWithDebug(response), closeDelay(response)) }
   }
 
   /**
@@ -392,17 +402,17 @@ final class NettyHttpServerPipelineHandler(
     // We writeAndFlush the response headers to get those back to the client as soon as they are ready.
     // Note: The ChannelFuture return from ctx.write(...) doesn't complete unless you eventually call flush.  In this
     //       case we just use ctx.writeAndFlush(...).
-    ctx.writeAndFlush(response).onComplete{ onChunkSendComplete(request, _, head, HttpUtil.isKeepAlive(response)) }
+    ctx.writeAndFlush(response).onComplete{ onChunkSendComplete(request, _, head, isKeepAliveWithDebug(response), closeDelay(response)) }
   }
   
   /**
    * For triggering the send of a single chunk that is wrapped in a Try
    */
-  private def sendChunk(request: Request, chunk: Try[Option[LinkedHttpContent]], isKeepAlive: Boolean)(implicit ctx: ChannelHandlerContext): Unit = {
+  private def sendChunk(request: Request, chunk: Try[Option[LinkedHttpContent]], isKeepAlive: Boolean, closeDelay: Option[Int])(implicit ctx: ChannelHandlerContext): Unit = {
     trace("sendChunk - Try wrapped")
     
     chunk match {
-      case Success(optContent) => sendChunk(request, optContent, isKeepAlive)
+      case Success(optContent) => sendChunk(request, optContent, isKeepAlive, closeDelay)
       case Failure(ex)         => handleFailedChunkFuture(request, ex)
     }
   }
@@ -410,21 +420,21 @@ final class NettyHttpServerPipelineHandler(
   /**
    * For triggering the send of a single chunk
    */
-  private def sendChunk(request: Request, chunk: Option[LinkedHttpContent], isKeepAlive: Boolean)(implicit ctx: ChannelHandlerContext): Unit = {
+  private def sendChunk(request: Request, chunk: Option[LinkedHttpContent], isKeepAlive: Boolean, closeDelay: Option[Int])(implicit ctx: ChannelHandlerContext): Unit = {
     trace("sendChunk - unwrapped")
     
     chunk match {
       //case Some(content) => require(content.nonEmpty, "Empty Buffer?!"); ctx.writeAndFlush(content).onComplete{ onChunkSendComplete(request, _, content.tail, isKeepAlive) }
-      case Some(content) => ctx.writeAndFlush(content).onComplete{ onChunkSendComplete(request, _, content.tail, isKeepAlive) }
-      case None          => ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{ onResponseComplete(request, _, isKeepAlive) }
+      case Some(content) => ctx.writeAndFlush(content).onComplete{ onChunkSendComplete(request, _, content.tail, isKeepAlive, closeDelay) }
+      case None          => ctx.writeAndFlush(LastHttpContent.EMPTY_LAST_CONTENT).onComplete{ onResponseComplete(request, _, isKeepAlive, closeDelay) }
     }
   }
   
-  private def onChunkSendComplete(request: Request, res: Try[Void], nextChunk: Future[Option[LinkedHttpContent]], isKeepAlive: Boolean)(implicit ctx: ChannelHandlerContext): Unit = {
+  private def onChunkSendComplete(request: Request, res: Try[Void], nextChunk: Future[Option[LinkedHttpContent]], isKeepAlive: Boolean, closeDelay: Option[Int])(implicit ctx: ChannelHandlerContext): Unit = {
     trace("onChunkSendComplete")
     
     res match {
-      case Success(_)  => nextChunk.onComplete{ sendChunk(request, _, isKeepAlive) }
+      case Success(_)  => nextChunk.onComplete{ sendChunk(request, _, isKeepAlive, closeDelay) }
       case Failure(ex) => trace("onChunkSendComplete - FAILURE", ex)
     }
   }
@@ -441,7 +451,7 @@ final class NettyHttpServerPipelineHandler(
   /**
    * Called once we've completed sending the response
    */
-  private def onResponseComplete(request: Request, res: Try[Void], isKeepAlive: Boolean)(implicit ctx: ChannelHandlerContext): Unit = {
+  private def onResponseComplete(request: Request, res: Try[Void], isKeepAlive: Boolean, closeDelay: Option[Int])(implicit ctx: ChannelHandlerContext): Unit = {
     trace("onResponseComplete")
     
     // We are no longer processing this request
@@ -461,7 +471,20 @@ final class NettyHttpServerPipelineHandler(
           if (logger.isTraceEnabled) logger.trace("ctx.read()")
           ctx.read()
         } else {
-          ctx.close()
+          // We want to close the connection
+          if (request.isContentFullyRead) {
+            closeDelay match {
+              case Some(delay) => ctx.channel().eventLoop().schedule(new CloseContextRunnable(ctx), delay, TimeUnit.MILLISECONDS)
+              case None => ctx.close()
+            }
+          } else {
+            // If we have sent a response while the client is still trying to send us data let's wait a short time
+            // before closing the connection so they have a chance to read our response before seeing a broken pipe
+            // on their end.
+            //
+            // Note: The 5 Second value for the delay is arbitrary
+            ctx.channel().eventLoop().schedule(new CloseContextRunnable(ctx), 5, TimeUnit.SECONDS)
+          }
         }
       case Failure(ex) => trace("onResponseComplete - FAILURE", ex)
     }
@@ -491,5 +514,13 @@ final class NettyHttpServerPipelineHandler(
   
   private def trace(name: String, ex: Throwable = null)(implicit ctx: ChannelHandlerContext): Unit = {
     if (logger.isTraceEnabled) logger.trace(s"$id - $name - ${ctx.channel}", ex)
+  }
+  
+  private def isKeepAliveWithDebug(response: HttpResponse): Boolean = {
+    HttpUtil.isKeepAlive(response) && !response.headers().contains("X-Debug-Force-Connection-Close")
+  }
+
+  private def closeDelay(response: HttpResponse): Option[Int] = {
+    response.headers().get("X-Debug-Force-Connection-Close-Delay-Millis").toIntOption
   }
 }

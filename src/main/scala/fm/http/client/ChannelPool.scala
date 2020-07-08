@@ -25,16 +25,27 @@ import scala.util.{Failure, Success}
 
 object ChannelPool {
   private case class IdleChannel(channel: Channel, lastActivity: Long)
+
+  // After this many exceptions we will disable the pool and assume they don't support keep-alive or have a very short
+  // keep alive time.
+  private[http] val ExceptionCountThreshold: Int = 3 // Arbitrarily chosen value
 }
 
-final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Channel], limit: Int, maxQueueSize: Int, maxIdleMillis: Long)(implicit executionCtx: ExecutionContext) extends Logging {
+final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Channel], limit: Int, maxQueueSize: Int, connectionMaxIdleMillis: Long, poolMaxIdleMillis: Long)(implicit executionCtx: ExecutionContext) extends Logging {
   import ChannelPool.IdleChannel
   
   private[this] var count: Int = 0
+  private[http] var exceptionCount: Int = 0
+  private[http] var poolDisabled: Boolean = false
   private[this] val waitingQueue: Queue[Promise[Channel]] = new LinkedBlockingQueue(maxQueueSize)
   private[this] val idleChannels: Deque[IdleChannel] = new ConcurrentLinkedDeque()
+  private[this] var lastActivity: Long = System.currentTimeMillis()
 
-  def isEmpty: Boolean = synchronized{
+  def isEmptyAndIdle: Boolean = synchronized {
+    isEmpty && lastActivity < System.currentTimeMillis() - poolMaxIdleMillis
+  }
+
+  private def isEmpty: Boolean = synchronized{
     idleChannels.isEmpty && waitingQueue.isEmpty
   }
 
@@ -43,7 +54,7 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
 
     trace("closeIdleChannels()")
 
-    val oldestAge: Long = System.currentTimeMillis() - maxIdleMillis
+    val oldestAge: Long = System.currentTimeMillis() - connectionMaxIdleMillis
 
     val it: java.util.Iterator[IdleChannel] = idleChannels.iterator()
 
@@ -56,10 +67,36 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
     }
   }
 
+  def markException(): Unit = synchronized {
+    trace(s"markException() - exceptionCount: $exceptionCount")
+    exceptionCount += 1
+
+    if (exceptionCount >= ChannelPool.ExceptionCountThreshold && !poolDisabled) {
+      poolDisabled = true
+      error("ChannelPool for has been disabled due to too many exceptions")
+
+      // Close all idle channels which will prevent us from re-using any more connections
+      val it: java.util.Iterator[IdleChannel] = idleChannels.iterator()
+
+      while (it.hasNext) {
+        val idle: IdleChannel = it.next()
+        idle.channel.close()
+        it.remove()
+      }
+    }
+  }
+
   def checkout(): Future[Channel] = synchronized {
     trace("checkout()")
-    
-    val idle: IdleChannel = idleChannels.poll()
+
+    lastActivity = System.currentTimeMillis()
+
+    var idle: IdleChannel = null
+
+    // Keep polling IdleChannels until we either get a null or an active channel
+    do {
+      idle = idleChannels.poll()
+    } while (null != idle && !idle.channel.isActive)
     
     if (null != idle) {
       trace(s"checkout() - Using Idle: $idle")
@@ -100,6 +137,12 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
       logger.warn("release() called on inActive Channel: "+ch)
       return
     }
+
+    // If we don't want to use the pool then just close the channel which will trigger remove() and onRemove()
+    if (poolDisabled) {
+      ch.close()
+      return
+    }
     
     var doRetry: Boolean = false
     
@@ -138,7 +181,7 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
   
     if (null == waiting) {
       count -= 1
-      require(count >= 0, "Invalid Count: "+count)
+      assert(count >= 0, "Invalid Count: "+count)
     }
     else {
       // Replace the removed channel with a new channel
@@ -154,6 +197,10 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
   }
   
   private def trace(msg: => String): Unit = {
-    if (logger.isTraceEnabled) logger.trace(s"[$label] - $msg - clientsWaiting: ${waitingQueue.size}, idleChannels: ${idleChannels.size}, activeCount: $count")
+    if (logger.isTraceEnabled) logger.trace(s"[$label] - $msg - clientsWaiting: ${waitingQueue.size}, idleChannels: ${idleChannels.size}, activeCount: $count, exceptionCount: $exceptionCount, poolDisabled: $poolDisabled")
   }
+  private def error(msg: => String): Unit = {
+    if (logger.isErrorEnabled) logger.error(s"[$label] - $msg - clientsWaiting: ${waitingQueue.size}, idleChannels: ${idleChannels.size}, activeCount: $count, exceptionCount: $exceptionCount, poolDisabled: $poolDisabled")
+  }
+
 }

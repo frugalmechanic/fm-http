@@ -17,6 +17,7 @@ package fm.http
 
 import fm.common.{ImmutableDate, Logging, ScheduledTaskRunner, TestHelpers}
 import fm.common.Implicits._
+import fm.http.client.DefaultHttpClient
 import fm.http.client.DefaultHttpClient.TimeoutTaskTimeoutException
 import fm.lazyseq.LazySeq
 import io.netty.buffer.{ByteBuf, Unpooled}
@@ -31,6 +32,7 @@ import scala.concurrent.duration._
 object TestClientAndServer {
   val port: Int = 1234
   val requestCount: Int = 1000
+  val maxConnectionsPerHost: Int = 250 // Should be smaller than requestCount to make use of the connection pool queueing
 
   private val tmpFile: File = {
     val f: File = makeTempFile("This is a temp file")
@@ -54,13 +56,15 @@ object TestClientAndServer {
   import fm.http.client.HttpClient
   import fm.http.server._
 
-  val client: HttpClient = HttpClient(maxConnectionsPerHost = 1000, maxRequestQueuePerHost = requestCount, defaultResponseTimeout = 60.seconds)
-  val clientNoFollowRedirects: HttpClient = HttpClient(maxConnectionsPerHost = 1000, maxRequestQueuePerHost = requestCount, defaultResponseTimeout = 60.seconds, followRedirects = false)
+  val client: HttpClient = HttpClient(maxConnectionsPerHost = maxConnectionsPerHost, maxRequestQueuePerHost = Int.MaxValue, defaultResponseTimeout = 60.seconds)
+  val clientLimitedConnectionsPerHost: DefaultHttpClient = HttpClient(maxConnectionsPerHost = 1, maxRequestQueuePerHost = Int.MaxValue, defaultResponseTimeout = 60.seconds)
+  val clientNoFollowRedirects: HttpClient = HttpClient(maxConnectionsPerHost = maxConnectionsPerHost, maxRequestQueuePerHost = Int.MaxValue, defaultResponseTimeout = 60.seconds, followRedirects = false)
 
   def startServer(): Unit = server
   def stopServer(): Unit = server.shutdown()
 
   private val options: HttpServerOptions = HttpServerOptions(
+    maxRequestsPerConnection = 25, // Arbitrary value
     requestIdResponseHeader = Some("X-Request-Id"),
     clientIPLookupSpecs = Seq(
       HttpServerOptions.ClientIPLookupSpec(
@@ -158,6 +162,9 @@ object TestClientAndServer {
     case GET("/random_access_file")       => Response.Ok(UTF8Header, makeRandomAccessFile("This is a random access file"))
 
     case GET(simple"/delay/${INT(sleepMillis)}") => Thread.sleep(sleepMillis); Response(Status.OK, "Ok")
+
+    case GET("/silent_close_after_response") => Response.Ok(Headers("X-Debug-Force-Connection-Close" -> "true"), "OK")
+    case GET(simple"/silent_close_after_response/delay/${INT(sleepMillis)}") => Response.Ok(Headers("X-Debug-Force-Connection-Close" -> "true", "X-Debug-Force-Connection-Close-Delay-Millis" -> sleepMillis.toString), "OK")
 
     case GET("/header_modifications")     => {
       implicit val r: Request = request
@@ -355,11 +362,11 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   test("Single Request") {
     getSync("/200", 200, "OK")
   }
-  
+
   test("Multiple Sequential Requests (1,000 Requests)") {
     (1 to 1000).foreach { _ => getSync("/200", 200, "OK") }
   }
-  
+
   test(s"Parallel Sync GET Requests ($requestCount Requests)") {
     // Uses blocking calls to maintain a constant number of connections to the server
     LazySeq.wrap(1 to requestCount).parForeach(threads=64){ _ =>
@@ -374,7 +381,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
       postSync("/upload", body, 200, body.length.toString)
     }
   }
-  
+
   test(s"Async Requests ($requestCount Requests)") {
     // Uses async non-blocking calls to make as many connections as possible to the server
     val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => getFullStringAsync("/200") }
@@ -395,7 +402,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
       res.body should equal (body.length.toString)
     }
   }
-  
+
   test(s"Async Requests ($requestCount Requests) - Connection: close") {
     // Uses async non-blocking calls to make as many connections as possible to the server
     val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => getFullStringAsync("/close/200") }
@@ -416,7 +423,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
       res.body should equal (body.length.toString)
     }
   }
-  
+
   test(s"Async Requests with delayed response ($requestCount Requests)") {
     // Uses async non-blocking calls to make as many connections as possible to the server
     val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => getFullStringAsync("/200?delay=1") }
@@ -426,7 +433,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
       res.body should equal ("OK")
     }
   }
-  
+
   test(s"Async Requests with delayed response ($requestCount Requests) - Connection: close") {
     // Uses async non-blocking calls to make as many connections as possible to the server
     val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => getFullStringAsync("/close/200?delay=1") }
@@ -436,11 +443,11 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
       res.body should equal ("OK")
     }
   }
-  
+
   test("Single Request with Large Response Body (1 MB)") {
     Await.result(getAndVerifyData("/data_one_mb"), 10.seconds)
   }
-  
+
   test("Single Request with Large Response Body (100 MB)") {
     Await.result(getAndVerifyData("/data_hundred_mb"), 60.seconds)
   }
@@ -464,15 +471,48 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     }
   }
 
-//  // This test uses up too much native memory:
-//  test("Async Requests with Large Response Body (1,000 Requests, 1 MB)") {
-//    // Uses async non-blocking calls to make as many connections as possible to the server
-//    val futures: Seq[Future[Boolean]] = (1 to 1000).map{ _ => getAndVerifyData("/data_one_mb") }
-//    val combined: Future[Seq[Boolean]] = Future.sequence(futures)
-//    Await.result(combined, 60.seconds).foreach { res: Boolean =>
-//      res should equal (true)
-//    }
-//  }
+  test("Async Requests with Large Response Body (1,000 Requests, 1 MB)") {
+    // Uses async non-blocking calls to make as many connections as possible to the server
+    val futures: Seq[Future[Boolean]] = (1 to 1000).map{ _ => getAndVerifyData("/data_one_mb") }
+    val combined: Future[Seq[Boolean]] = Future.sequence(futures)
+    Await.result(combined, 60.seconds).foreach { res: Boolean =>
+      res should equal (true)
+    }
+  }
+
+  test("Sync Requests with limited server connections (100 Requests) / Server closes unexpectedly - 100ms sleep") {
+    (1 to 10).foreach { _ =>
+      getSync("/silent_close_after_response", 200, "OK", TestClientAndServer.clientLimitedConnectionsPerHost)
+      // The thread pool should have enough time to detect that the remote side closed the connection before it makes another request
+      Thread.sleep(100)
+    }
+
+    getChannelPool(TestClientAndServer.clientLimitedConnectionsPerHost).exceptionCount shouldBe 0
+    getChannelPool(TestClientAndServer.clientLimitedConnectionsPerHost).poolDisabled shouldBe false
+  }
+
+  test("Sync Requests with limited server connections (100 Requests) / Server closes unexpectedly - no sleep") {
+    (1 to 10).foreach { _ =>
+      getSync("/silent_close_after_response/delay/1000", 200, "OK", TestClientAndServer.clientLimitedConnectionsPerHost)
+    }
+
+    getChannelPool(TestClientAndServer.clientLimitedConnectionsPerHost).exceptionCount shouldBe ChannelPool.ExceptionCountThreshold
+    getChannelPool(TestClientAndServer.clientLimitedConnectionsPerHost).poolDisabled shouldBe true
+  }
+
+  private def getChannelPool(client: DefaultHttpClient): ChannelPool = {
+    client.getChannelPool("127.0.0.1", port, false, None).getOrElse{ throw new Exception("Missing ChannelPool") }
+  }
+
+  test("Async Requests with limited server connections (100 Requests) / Server closes unexpectedly") {
+    // Uses async non-blocking calls to make as many connections as possible to the server
+    val futures: Seq[Future[FullStringResponse]] = (1 to 5).map{ _ => getFullStringAsync("/silent_close_after_response", TestClientAndServer.clientLimitedConnectionsPerHost) }
+    val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
+    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+      res.status.code should equal (200)
+      res.body should equal ("OK")
+    }
+  }
 
   /*
   Certain characters like £ are two bytes in UTF-8 and one byte in Latin1
@@ -520,55 +560,55 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   test("Redirect") {
     getSync("/redirect", 200, "ok")
   }
-  
+
   test("Redirect 1") {
     getSync("/redirect1", 200, "ok")
   }
-  
+
   test("Redirect 2") {
     getSync("/redirect2", 200, "ok")
   }
-  
+
   test("Redirect 3") {
     getSync("/redirect3", 200, "ok")
   }
-  
+
   test("Redirect 4") {
     getSync("/redirect4", 200, "ok")
   }
-  
+
   test("Redirect 5") {
     intercept[TooManyRedirectsException] { getSync("/redirect5", 200, "ok") }
   }
-  
+
   test("Redirect 6") {
     intercept[TooManyRedirectsException] { getSync("/redirect6", 200, "ok") }
   }
-  
+
   test("Redirect - noFollowRedirects") {
     getSync("/redirect", 302, "/ok", clientNoFollowRedirects)
   }
-  
+
   test("Redirect 1 - noFollowRedirects") {
     getSync("/redirect1", 302, "/redirect", clientNoFollowRedirects)
   }
-  
+
   test("Redirect 2 - noFollowRedirects") {
     getSync("/redirect2", 301, "/redirect1", clientNoFollowRedirects)
   }
-  
+
   test("Redirect 3 - noFollowRedirects") {
     getSync("/redirect3", 302, s"http://localhost:$port/redirect2", clientNoFollowRedirects)
   }
-  
+
   test("Redirect 4 - noFollowRedirects") {
     getSync("/redirect4", 302, "/redirect3", clientNoFollowRedirects)
   }
-  
+
   test("Redirect 5 - noFollowRedirects") {
     getSync("/redirect5", 302, "/redirect4", clientNoFollowRedirects)
   }
-  
+
   test("Redirect 6 - noFollowRedirects") {
     getSync("/redirect6", 302, "/redirect5", clientNoFollowRedirects)
   }

@@ -60,13 +60,6 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
 
   // Are we currently sending a request?
   private[this] var isSending: Boolean = false
-
-  // This can be set to false when we close the channel due to the
-  // isConnectionClose variable being true.
-  // Note: We can't just rely on the isConnectionClose variable
-  //       to manage this behavior because the server could still
-  //       close the connection mid-response.
-  private[this] var failPromisesOnChannelInactive: Boolean = true
   
   /** This is called once when a client connects to our server */
   override def channelActive(ctx: ChannelHandlerContext): Unit = {
@@ -83,7 +76,8 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
   /** This is called once when a client disconnects from our server OR we close the connection */
   override def channelInactive(ctx: ChannelHandlerContext): Unit = {
     trace("channelInactive")(ctx)
-    if (failPromisesOnChannelInactive) failPromises(new IOException("Channel Closed"))(ctx)
+    markChannelPoolException()
+    failPromises(new IOException("Channel Closed"))(ctx)
     super.channelInactive(ctx)
   }
   
@@ -113,6 +107,8 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
       
       contentBuilder = LinkedHttpContentBuilder()
       channelReadHttpResponse(response, contentBuilder.future)
+
+      ctx.channel().config().setAutoRead(false)
       
     case content: HttpContent =>
       require(null != contentBuilder, "Received an HttpContent but the contentBuilder is null!")
@@ -120,14 +116,12 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
       
       if (contentBuilder.isDone) {
         trace("channelReadImpl - contentBuilder.isDone")
+        ctx.channel().config().setAutoRead(true)
         
         contentBuilder = null
         
         if (isConnectionClose || null == pool) {
           trace("channelReadImpl - ctx.close()")
-          // We need to make sure we don't fail promises in the channelInactive
-          // method since we expect the channel to be closed.
-          failPromisesOnChannelInactive = false
           ctx.close()
         } else {
           if (isSending) {
@@ -176,9 +170,6 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
       case Success(_) => isSending = false
       case Failure(_) => // Do nothing
     }
-    
-    // Allow the HttpResponse message to be read
-    ctx.read()
   }
 
   /**
@@ -299,14 +290,23 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
   
   def failPromises(cause: Throwable)(implicit ctx: ChannelHandlerContext): Unit = {
     trace(s"failPromises(responsePromise: $responsePromise, contentBuilder: $contentBuilder)", cause)
+
     if (null != responsePromise) responsePromise.tryFailure(cause)
     if (null != contentBuilder) contentBuilder += cause
   }
   
   override def exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable): Unit = {
     logger.error(s"$id - exceptionCaught - ${ctx.channel}", cause)
+    markChannelPoolException()
     failPromises(cause)(ctx)
     ctx.close()
+  }
+
+  private def markChannelPoolException(): Unit = {
+    // These are only a problem if we are currently waiting for a response and using a ChannelPool
+    if (null == responsePromise || responsePromise.isCompleted || null == pool) return
+
+    pool.markException()
   }
   
   private def trace(name: String, ex: Throwable = null)(implicit ctx: ChannelHandlerContext): Unit = {

@@ -16,7 +16,7 @@
 package fm.http.client
 
 import fm.common.Implicits._
-import fm.common.{Logging, URI, URL}
+import fm.common.{Logging, Service, URI, URL}
 import fm.http._
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel._
@@ -27,6 +27,7 @@ import io.netty.handler.flow.FlowControlHandler
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory
 import io.netty.handler.ssl.{SslContext, SslContextBuilder}
 import io.netty.util.concurrent.GlobalEventExecutor
+import java.io.IOException
 import java.util.concurrent.{ConcurrentHashMap, ScheduledFuture, TimeoutException}
 import java.nio.charset.Charset
 import java.lang.ref.WeakReference
@@ -52,7 +53,10 @@ object DefaultHttpClient extends Logging {
   private val MaxHeaderSize: Int = 8192              // This is the default value
   private val MaxChunkSize: Int = 1048576            // This is increased from the 8192 default.
   private val FailOnMissingResponse: Boolean = false // This is the default value
-  
+
+  private val IOExceptionMaxRetries: Int = 4 // Arbitrary value but should probably be larger than ChannelPool.ExceptionCountThreshold
+  private val PoolMaxIdleTime: FiniteDuration = 60.minutes // Arbitrary value
+
   private val workerGroup: EventLoopGroup = {
     NativeHelpers.makeClientEventLoopGroup(0, new ThreadFactory("fm-http-client-worker", daemon = true))
   }
@@ -216,8 +220,13 @@ final case class DefaultHttpClient(
     while (it.hasNext()) {
       val pool: ChannelPool = it.next()
       pool.closeIdleChannels()
-      if (pool.isEmpty) it.remove()
+      if (pool.isEmptyAndIdle) it.remove()
     }
+  }
+
+  // For use by the tests
+  private[http] def getChannelPool(host: String, port: Int, ssl: Boolean, proxy: Option[ProxyOptions]): Option[ChannelPool] = {
+    Option(endpointMap.get(EndPoint(host, port, ssl, proxy)))
   }
   
   /**
@@ -230,7 +239,15 @@ final case class DefaultHttpClient(
       var pool: ChannelPool = endpointMap.get(endPoint)
 
       if (null == pool) {
-        pool = new ChannelPool(endPoint.prettyString, makeNewChannel(endPoint), limit = maxConnectionsPerHost, maxQueueSize = maxRequestQueuePerHost, maxIdleMillis = maxConnectionIdleDuration.toMillis)
+        pool = new ChannelPool(
+          label = endPoint.prettyString,
+          newChannel = makeNewChannel(endPoint),
+          limit = maxConnectionsPerHost,
+          maxQueueSize = maxRequestQueuePerHost,
+          connectionMaxIdleMillis = maxConnectionIdleDuration.toMillis,
+          poolMaxIdleMillis = DefaultHttpClient.PoolMaxIdleTime.toMillis
+        )
+
         endpointMap.put(endPoint, pool)
       }
       
@@ -241,10 +258,32 @@ final case class DefaultHttpClient(
   }
   
   private[this] val traceSep: String = "======================================================================================================================="
-  
+
   private def execute0(url: URL, request: Request, timeout: Duration): Future[AsyncResponse] = {
+    if (useConnectionPool) {
+      executeWithIOExceptionRetry(url, request, timeout)
+    } else {
+      logger.info(s"${request.method.name} $url")
+      executeRaw(url, request, timeout)
+    }
+  }
+
+  private def executeWithIOExceptionRetry(url: URL, request: Request, timeout: Duration): Future[AsyncResponse] = {
+    Service.callAsync(
+      msg = s"${request.method.name} $url",
+      logging = logger,
+      exceptionHandler = {
+        case _: IOException => // Retry since these should be IOExceptions relating to the ChannelPool
+        case ex: Throwable => throw ex // Immediately throw and do not retry on everything else
+      },
+      delayBetweenCalls = Duration.Zero,
+      backOffStrategy = Service.NoWait,
+      maxRetries = DefaultHttpClient.IOExceptionMaxRetries
+    ){ executeRaw(url, request, timeout) }
+  }
+
+  private def executeRaw(url: URL, request: Request, timeout: Duration): Future[AsyncResponse] = {
     if (logger.isTraceEnabled) logger.trace(s"Sending Request:\n$traceSep\n$request\n$traceSep\n")
-    else logger.info(s"${request.method.name} $url")
     
     val scheme: String = url.scheme.getOrElse{ return Future.failed(new MalformedURLException("Missing Scheme")) }
     val host: String = url.host.getOrElse{ return Future.failed(new MalformedURLException("Missing Host")) }
@@ -361,7 +400,7 @@ final case class DefaultHttpClient(
     val b: Bootstrap = new Bootstrap()
     b.group(workerGroup)
     b.channel(NativeHelpers.socketChannelClass)
-    b.option[java.lang.Boolean](ChannelOption.AUTO_READ, false) // ChannelHandlerContext.read() must be explicitly called when we want a message read
+    b.option[java.lang.Boolean](ChannelOption.AUTO_READ, true) // Note: We disable AUTO_READ as soon as we start receiving a message
     b.handler(new ChannelInitializer[SocketChannel] {
        def initChannel(ch: SocketChannel): Unit = {
          val p: ChannelPipeline = ch.pipeline()
