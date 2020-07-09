@@ -11,8 +11,10 @@
   </root>
 
 <!--
+  <logger name="fm.http.LinkedHttpContentReader" level="trace"/>
   <logger name="fm.http.client.DefaultHttpClient" level="trace"/>
   <logger name="fm.http.client.ChannelPool" level="trace"/>
   <logger name="fm.http.client.NettyHttpClientPipelineHandler" level="trace"/>
+  <logger name="fm.http.server.NettyHttpServerPipelineHandler" level="trace"/>
 -->
 </configuration>
