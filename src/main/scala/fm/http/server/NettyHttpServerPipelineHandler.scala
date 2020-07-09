@@ -144,13 +144,6 @@ final class NettyHttpServerPipelineHandler(
     ctx.channel().attr(ProcessingRequestKey).set(true)
     
     val (request: Request, response: Future[Response]) = handle(nettyRequest, content)
-
-    // We only want keep-alive if:
-    //   1. The request wants it (either via HTTP 1.1 or an explicit "Connection: keep-alive" request header)
-    //   2. We are below our maxRequestsPerConnection
-    //   3. We have fully read the request.  If we have not fully read the request then something went wrong and the
-    //      connection will be automatically closed by us.  So we should let the client know in the response.
-    val wantKeepAlive: Boolean = HttpUtil.isKeepAlive(nettyRequest) && numRequestsHandled < options.maxRequestsPerConnection && request.isContentFullyRead
     
     // The Response Version should match the request version
     val version: HttpVersion = nettyRequest.protocolVersion()
@@ -159,18 +152,29 @@ final class NettyHttpServerPipelineHandler(
     response.recover { case ex: Throwable =>
       logger.error("Caught Exception waiting for Response Future - Sending Error Response", ex)
       makeErrorResponse(Status.INTERNAL_SERVER_ERROR)
-    }.foreach { res: Response => res match {
-      case full:  FullResponse             => sendFullResponse(request, prepareResponse(request, full.toFullHttpResponse(version), wantKeepAlive))
-      case async: AsyncResponse            => sendAsyncResponse(request, prepareResponse(request, async.toHttpResponse(version), wantKeepAlive), async.head)
-      case input: InputStreamResponse      => sendInputStreamResponse(request, prepareResponse(request, input.toHttpResponse(version), wantKeepAlive), input.input, input.length)
-      case file:  RandomAccessFileResponse => sendRandomAccessFileResponse(request, prepareResponse(request, file.toHttpResponse(version), wantKeepAlive), file.file)
-      case file:  FileResponse             =>
-        try {
-          sendFileResponse(request, prepareResponse(request, file.toHttpResponse(version), wantKeepAlive), file.file)
-        } catch {
-          case _: FileNotFoundException => sendFullResponse(request, prepareResponse(request, makeErrorResponse(Status.NOT_FOUND).toFullHttpResponse(version), wantKeepAlive))
-        }
-    }}
+    }.foreach { res: Response =>
+      // We only want keep-alive if:
+      //   1. The request wants it (either via HTTP 1.1 or an explicit "Connection: keep-alive" request header)
+      //   2. We are below our maxRequestsPerConnection
+      //   3. We have fully read the request.  If we have not fully read the request then something went wrong and the
+      //      connection will be automatically closed by us.  So we should let the client know in the response.
+      val wantKeepAlive: Boolean = HttpUtil.isKeepAlive(nettyRequest) && numRequestsHandled < options.maxRequestsPerConnection && request.isContentFullyRead
+
+      trace(s"channelReadHttpRequest - wantKeepAlive: $wantKeepAlive, HttpUtil.isKeepAlive(nettyRequest): ${HttpUtil.isKeepAlive(nettyRequest)}, numRequestsHandled < options.maxRequestsPerConnection: ${numRequestsHandled < options.maxRequestsPerConnection}, request.isContentFullyRead: ${request.isContentFullyRead}")
+
+      res match {
+        case full:  FullResponse             => sendFullResponse(request, prepareResponse(request, full.toFullHttpResponse(version), wantKeepAlive))
+        case async: AsyncResponse            => sendAsyncResponse(request, prepareResponse(request, async.toHttpResponse(version), wantKeepAlive), async.head)
+        case input: InputStreamResponse      => sendInputStreamResponse(request, prepareResponse(request, input.toHttpResponse(version), wantKeepAlive), input.input, input.length)
+        case file:  RandomAccessFileResponse => sendRandomAccessFileResponse(request, prepareResponse(request, file.toHttpResponse(version), wantKeepAlive), file.file)
+        case file:  FileResponse             =>
+          try {
+            sendFileResponse(request, prepareResponse(request, file.toHttpResponse(version), wantKeepAlive), file.file)
+          } catch {
+            case _: FileNotFoundException => sendFullResponse(request, prepareResponse(request, makeErrorResponse(Status.NOT_FOUND).toFullHttpResponse(version), wantKeepAlive))
+          }
+      }
+    }
   }
   
   /**
