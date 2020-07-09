@@ -29,7 +29,7 @@ import java.nio.channels.ClosedChannelException
 import java.util.concurrent.atomic.AtomicLong
 import java.util.Date
 import java.util.concurrent.TimeUnit
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.util.{Failure, Success, Try}
 
 object NettyHttpServerPipelineHandler {
@@ -192,28 +192,37 @@ final class NettyHttpServerPipelineHandler(
     
     val contentReader: LinkedHttpContentReader = LinkedHttpContentReader(is100ContinueExpected, content)
     val r: Request = Request(remoteIp, request, contentReader)
-    
-    val future: Future[Response] = router.lookup(r) match {
-      case Some(handler) => 
-        try {
-          val handlerExecutionContext: ExecutionContext = options.requestHandlerExecutionContextProvider match {
-            case Some(provider) => provider(r)
-            case None => implicitly // Use the default ExecutionContext everything else in this class uses
+
+    val handlerExecutionContext: ExecutionContext = options.requestHandlerExecutionContextProvider match {
+      case Some(provider) => provider(r)
+      case None => implicitly // Use the default ExecutionContext everything else in this class uses
+    }
+
+    val handlerPromise: Promise[Response] = Promise()
+
+    // Note: User code (RequestRouter and RequestHandler) are executed in our handlerExecutionContext
+    handlerExecutionContext.execute {
+      new Runnable() {
+        override def run(): Unit = {
+          val future: Future[Response] = router.lookup(r) match {
+            case Some(handler) =>
+              try {
+                handler(r)(handlerExecutionContext)
+              } catch {
+                case ex: Exception =>
+                  logger.error(s"Caught exception handling request: request", ex)
+                  Future.successful(makeErrorResponse(Status.INTERNAL_SERVER_ERROR))
+              }
+
+            case None => Future.successful(makeErrorResponse(Status.NOT_FOUND))
           }
 
-          // TODO: We might want to run the actual "handler(r)" code using the ExecutionContext returned by
-          //       the requestHandlerExecutionContextProvider.
-          handler(r)(handlerExecutionContext)
-        } catch {
-          case ex: Exception =>
-            logger.error(s"Caught exception handling request: request", ex)
-            Future.successful(makeErrorResponse(Status.INTERNAL_SERVER_ERROR))
+          handlerPromise.completeWith(future)
         }
-      
-      case None => Future.successful(makeErrorResponse(Status.NOT_FOUND))
+      }
     }
-    
-    (r, future)
+
+    (r, handlerPromise.future)
   }
   
   private def remoteIPForRequest(request: HttpRequest)(implicit ctx: ChannelHandlerContext): IP = {
