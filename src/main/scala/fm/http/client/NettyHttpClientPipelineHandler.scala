@@ -89,8 +89,12 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
   
   override protected def channelRead(ctx: ChannelHandlerContext, msg: AnyRef): Unit = {
     if (logger.isTraceEnabled) trace("channelRead - "+msg.getClass.getSimpleName)(ctx)
-    channelReadImpl(msg)(ctx)
-    ReferenceCountUtil.release(msg)
+
+    try {
+      channelReadImpl(msg)(ctx)
+    } finally {
+      ReferenceCountUtil.release(msg)
+    }
   }
   
   protected def channelReadImpl(obj: AnyRef)(implicit ctx: ChannelHandlerContext): Unit = obj match {
@@ -263,7 +267,8 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
   }
   
   private def fail(promise: Promise[_], ex: Throwable, channelPromise: ChannelPromise)(implicit ctx: ChannelHandlerContext): Unit = {
-    trace("fail(): "+ex)
+    trace("fail(): ", ex)
+    markChannelPoolException()
     promise.tryFailure(ex)
     channelPromise.setFailure(ex)
     ctx.close()
@@ -296,7 +301,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
   }
   
   override def exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable): Unit = {
-    logger.error(s"$id - exceptionCaught - ${ctx.channel}", cause)
+    logger.error(s"$id - exceptionCaught - ${ctx.channel} - responsePromise: $responsePromise", cause)
     markChannelPoolException()
     failPromises(cause)(ctx)
     ctx.close()
@@ -310,6 +315,6 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
   }
   
   private def trace(name: String, ex: Throwable = null)(implicit ctx: ChannelHandlerContext): Unit = {
-    if (logger.isTraceEnabled) logger.trace(s"$id - $name - ${ctx.channel}", ex)
+    if (logger.isTraceEnabled) logger.trace(s"$id - $name - ${ctx.channel} - responsePromise: $responsePromise", ex)
   }
 }

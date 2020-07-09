@@ -23,6 +23,7 @@ import io.netty.buffer.{ByteBuf, Unpooled}
 import io.netty.handler.codec.http.{DefaultFullHttpRequest, DefaultHttpRequest, FullHttpRequest, HttpMessage, HttpMethod, HttpRequest, HttpVersion}
 import io.netty.util.CharsetUtil
 import scala.concurrent.Future
+import scala.util.{Failure, Success, Try}
 
 object Request {
   def Get(url: String, headers: Headers): FullRequest = FullRequest(HttpMethod.GET, URL(url), headers)
@@ -59,6 +60,13 @@ sealed trait Request {
   override def toString: String = {
     s"${method.name} ${url}\n\n$headers"
   }
+
+  private[client] def isSendable: Boolean
+  private[client] def refCnt(): Int
+  private[client] def retain(): this.type
+  private[client] def release(decrement: Int): Boolean
+  private[client] def readerIndex(): Int
+  private[client] def readerIndex(idx: Int): Unit
 }
 
 /**
@@ -68,8 +76,21 @@ final case class FullRequest(method: HttpMethod, url: URL, headers: Headers = He
   def toFullHttpRequest(version: HttpVersion, uri: String): FullHttpRequest = {
     initHeaders(new DefaultFullHttpRequest(version, method, uri, buf))
   }
-  
-  def withHeaders(newHeaders: Headers): FullRequest = copy(headers = newHeaders)
+
+  override def withHeaders(newHeaders: Headers): FullRequest = copy(headers = newHeaders)
+
+  override private[client] def isSendable: Boolean = buf.refCnt() > 0 // Sendable as long as the buf hasn't been fully released
+
+  override private[client] def refCnt(): Int = buf.refCnt()
+
+  override private[client] def retain(): this.type = {
+    buf.retain()
+    this
+  }
+
+  override private[client] def release(decrement: Int): Boolean = buf.release(decrement)
+  override private[client] def readerIndex(): Int = buf.readerIndex()
+  override private[client] def readerIndex(idx: Int): Unit = buf.readerIndex(idx)
 }
 
 /**
@@ -79,8 +100,28 @@ final case class AsyncRequest(method: HttpMethod, url: URL, headers: Headers, he
   def toHttpRequest(version: HttpVersion, uri: String): HttpRequest = {
     initHeaders(new DefaultHttpRequest(version, method, uri))
   }
-  
-  def withHeaders(newHeaders: Headers): AsyncRequest = copy(headers = newHeaders)
+
+  override def withHeaders(newHeaders: Headers): AsyncRequest = copy(headers = newHeaders)
+
+  override private[client] def isSendable: Boolean = {
+    if (!head.isCompleted) return true // Future isn't even completed so it should be sendable
+
+    head.value match {
+      case None => true // Not yet completed, should be okay to send
+      case Some(t: Try[Option[LinkedHttpContent]]) =>
+        t match {
+          case Failure(_) => true // Should attempt send and follow normal failure code path
+          case Success(None) => true  // Empty content, is okay to send
+          case Success(Some(_: LinkedHttpContent)) => false // For now this case is false.  More work would be required to properly handle this (if it is even possible)
+        }
+    }
+  }
+
+  override private[client] def refCnt(): Int = 1 // nop
+  override private[client] def retain(): this.type = this // nop
+  override private[client] def release(decrement: Int): Boolean = true // nop
+  override private[client] def readerIndex(): Int = 0 // nop
+  override private[client] def readerIndex(idx: Int): Unit = { } // nop
 }
 
 /**
@@ -90,6 +131,13 @@ final case class FileRequest(method: HttpMethod, url: URL, headers: Headers, fil
   def toHttpRequest(version: HttpVersion, uri: String): HttpRequest = {
     initHeaders(new DefaultHttpRequest(version, method, uri))
   }
-  
-  def withHeaders(newHeaders: Headers): FileRequest = copy(headers = newHeaders)
+
+  override def withHeaders(newHeaders: Headers): FileRequest = copy(headers = newHeaders)
+
+  override private[client] def isSendable: Boolean = true // Always sendable
+  override private[client] def refCnt(): Int = 1 // nop
+  override private[client] def retain(): this.type = this // nop
+  override private[client] def release(decrement: Int): Boolean = false // nop
+  override private[client] def readerIndex(): Int = 0 // nop
+  override private[client] def readerIndex(idx: Int): Unit = { } // nop
 }

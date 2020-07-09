@@ -269,17 +269,41 @@ final case class DefaultHttpClient(
   }
 
   private def executeWithIOExceptionRetry(url: URL, request: Request, timeout: Duration): Future[AsyncResponse] = {
-    Service.callAsync(
+    val startingRefCnt: Int = request.refCnt()
+    val readerIndex: Int = request.readerIndex()
+
+    val res: Future[AsyncResponse] = Service.callAsync(
       msg = s"${request.method.name} $url",
       logging = logger,
       exceptionHandler = {
-        case _: IOException => // Retry since these should be IOExceptions relating to the ChannelPool
+        case _: IOException if request.isSendable => // Retry since these should be IOExceptions relating to the ChannelPool
         case ex: Throwable => throw ex // Immediately throw and do not retry on everything else
       },
       delayBetweenCalls = Duration.Zero,
       backOffStrategy = Service.NoWait,
       maxRetries = DefaultHttpClient.IOExceptionMaxRetries
-    ){ executeRaw(url, request, timeout) }
+    ){
+      // Before each try we need to retain() any ByteBuf since it will be released while trying to send
+      // Note: If there is an exception thrown in executeRaw then the ByteBuf might not have been released.  We will
+      //       handle this below when we call release() with the appropriate decrement passed in.  The goal here is to
+      //       prevent the reference count from reaching zero while trying to send in case we need to retry.
+      request.retain()
+
+      // Make sure we reset the ByteBuf readerIndex (if applicable)
+      request.readerIndex(readerIndex)
+
+      executeRaw(url, request, timeout)
+    }
+
+    // Release any ByteBuf that we held onto
+    res.onComplete{ _ =>
+      // Our ending reference count should be our starting refCnt - 1
+      val refCnt: Int = request.refCnt()
+      val targetRefCnf: Int = startingRefCnt - 1
+      if (refCnt > targetRefCnf) request.release(refCnt - targetRefCnf)
+    }
+
+    res
   }
 
   private def executeRaw(url: URL, request: Request, timeout: Duration): Future[AsyncResponse] = {
@@ -358,17 +382,12 @@ final case class DefaultHttpClient(
     val connectFuture: ChannelFuture = bootstrap.connect(host, port)
     
     val ch: Channel = connectFuture.channel()
-    
+
+    // Note: DefaultHttpClient.enableTimeoutTask will handle canceling the task if the Promise is successfully completed
     if (defaultConnectTimeout.isFinite()) DefaultHttpClient.enableTimeoutTask(promise, defaultConnectTimeout.asInstanceOf[FiniteDuration])
-    
-    promise.future.onComplete {
-      case Success(_)  => 
-      // If the connect promise fails (e.g. we timeout) then make sure we close the channel
-      case Failure(ex) => ch.close()
-    }
 
     connectFuture.onComplete {
-      case Success(_) => if (!promise.trySuccess(ch)) ch.close()
+      case Success(_) => promise.trySuccess(ch)
       case Failure(ex) => promise.tryFailure(ex)
     }
     

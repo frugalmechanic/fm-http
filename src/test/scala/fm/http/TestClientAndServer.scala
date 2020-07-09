@@ -24,6 +24,7 @@ import io.netty.buffer.{ByteBuf, Unpooled}
 import java.io.{File, RandomAccessFile}
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.util.concurrent.ThreadLocalRandom
 import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
 import scala.concurrent.{Await, Future, Promise}
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -32,7 +33,7 @@ import scala.concurrent.duration._
 object TestClientAndServer {
   val port: Int = 1234
   val requestCount: Int = 1000
-  val maxConnectionsPerHost: Int = 250 // Should be smaller than requestCount to make use of the connection pool queueing
+  val maxConnectionsPerHost: Int = 64 // Should be smaller than requestCount to make use of the connection pool queueing
 
   private val tmpFile: File = {
     val f: File = makeTempFile("This is a temp file")
@@ -57,14 +58,16 @@ object TestClientAndServer {
   import fm.http.server._
 
   val client: HttpClient = HttpClient(maxConnectionsPerHost = maxConnectionsPerHost, maxRequestQueuePerHost = Int.MaxValue, defaultResponseTimeout = 60.seconds)
-  val clientLimitedConnectionsPerHost: DefaultHttpClient = HttpClient(maxConnectionsPerHost = 1, maxRequestQueuePerHost = Int.MaxValue, defaultResponseTimeout = 60.seconds)
   val clientNoFollowRedirects: HttpClient = HttpClient(maxConnectionsPerHost = maxConnectionsPerHost, maxRequestQueuePerHost = Int.MaxValue, defaultResponseTimeout = 60.seconds, followRedirects = false)
+
+  // Each of the tests that use this client should start with a fresh client where the ChannelPool has not been disabled
+  def makeClientLimitedConnectionsPerHost(): DefaultHttpClient = HttpClient(maxConnectionsPerHost = 1, maxRequestQueuePerHost = Int.MaxValue, defaultResponseTimeout = 60.seconds)
 
   def startServer(): Unit = server
   def stopServer(): Unit = server.shutdown()
 
   private val options: HttpServerOptions = HttpServerOptions(
-    maxRequestsPerConnection = 25, // Arbitrary value
+    maxRequestsPerConnection = 16, // Arbitrary value
     requestIdResponseHeader = Some("X-Request-Id"),
     clientIPLookupSpecs = Seq(
       HttpServerOptions.ClientIPLookupSpec(
@@ -113,6 +116,7 @@ object TestClientAndServer {
   private def router = RequestRouter(handler)
 
   private val OneMB: Long = 1048576
+  private val RandomBodySizeMax: Int = OneMB.toInt * 2
 
   private val UTF8Header: Headers = Headers(("Content-Type", "text/html; charset=utf-8"))
 
@@ -164,7 +168,10 @@ object TestClientAndServer {
     case GET(simple"/delay/${INT(sleepMillis)}") => Thread.sleep(sleepMillis); Response(Status.OK, "Ok")
 
     case GET("/silent_close_after_response") => Response.Ok(Headers("X-Debug-Force-Connection-Close" -> "true"), "OK")
+    case POST("/silent_close_after_response") => request.content.readToString().map{ s: String => Response.Ok(Headers("X-Debug-Force-Connection-Close" -> "true"), s) }
+
     case GET(simple"/silent_close_after_response/delay/${INT(sleepMillis)}") => Response.Ok(Headers("X-Debug-Force-Connection-Close" -> "true", "X-Debug-Force-Connection-Close-Delay-Millis" -> sleepMillis.toString), "OK")
+    case POST(simple"/silent_close_after_response/delay/${INT(sleepMillis)}") => request.content.readToString().map{ s: String => Response.Ok(Headers("X-Debug-Force-Connection-Close" -> "true", "X-Debug-Force-Connection-Close-Delay-Millis" -> sleepMillis.toString), s) }
 
     case GET("/header_modifications")     => {
       implicit val r: Request = request
@@ -266,7 +273,7 @@ object TestClientAndServer {
 
 // TODO: split this into a "stress test" mode and a "normal" unit testing mode
 final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAfterAll {
-  import TestClientAndServer.{charForIdx, client, clientNoFollowRedirects, makeLinkedHttpContent, OneMB, port, requestCount}
+  import TestClientAndServer.{charForIdx, client, clientNoFollowRedirects, makeLinkedHttpContent, OneMB, port, RandomBodySizeMax, requestCount}
   import fm.http.client._
   
   override def beforeAll(): Unit = {
@@ -359,11 +366,25 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     }
   }
 
+  private def makeBody(length: Int): String = {
+    val sb: StringBuilder = new StringBuilder(length)
+    val chars: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890"
+
+    var i: Int = 0
+
+    while (i < length) {
+      sb += chars.charAt(ThreadLocalRandom.current().nextInt(0, chars.length))
+      i += 1
+    }
+
+    sb.toString()
+  }
+
   test("Single Request") {
     getSync("/200", 200, "OK")
   }
 
-  test("Multiple Sequential Requests (1,000 Requests)") {
+  test("Multiple Sequential Requests (1000 Requests)") {
     (1 to 1000).foreach { _ => getSync("/200", 200, "OK") }
   }
 
@@ -377,7 +398,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   test(s"Parallel Sync POST Requests ($requestCount Requests)") {
     // Uses blocking calls to maintain a constant number of connections to the server
     LazySeq.wrap(1 to requestCount).parForeach(threads=64){ _ =>
-      val body: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890"
+      val body: String = makeBody(ThreadLocalRandom.current().nextInt(RandomBodySizeMax))
       postSync("/upload", body, 200, body.length.toString)
     }
   }
@@ -394,7 +415,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
 
   test(s"Async POST Requests ($requestCount Requests)") {
     // Uses async non-blocking calls to make as many connections as possible to the server
-    val body: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890"
+    val body: String = makeBody(ThreadLocalRandom.current().nextInt(RandomBodySizeMax))
     val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => postFullStringAsync("/upload", body) }
     val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
     Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
@@ -415,7 +436,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
 
   test(s"Async Requests POST ($requestCount Requests) - Connection: close") {
     // Uses async non-blocking calls to make as many connections as possible to the server
-    val body: String = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890"
+    val body: String = makeBody(ThreadLocalRandom.current().nextInt(RandomBodySizeMax))
     val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => postFullStringAsync("/close/upload", body) }
     val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
     Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
@@ -471,7 +492,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     }
   }
 
-  test("Async Requests with Large Response Body (1,000 Requests, 1 MB)") {
+  test("Async Requests with Large Response Body (1000 Requests, 1 MB)") {
     // Uses async non-blocking calls to make as many connections as possible to the server
     val futures: Seq[Future[Boolean]] = (1 to 1000).map{ _ => getAndVerifyData("/data_one_mb") }
     val combined: Future[Seq[Boolean]] = Future.sequence(futures)
@@ -480,37 +501,103 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     }
   }
 
-  test("Sync Requests with limited server connections (100 Requests) / Server closes unexpectedly - 100ms sleep") {
-    (1 to 10).foreach { _ =>
-      getSync("/silent_close_after_response", 200, "OK", TestClientAndServer.clientLimitedConnectionsPerHost)
+  test("Sync GET Requests with limited server connections (10 Requests) / Server closes unexpectedly - 100ms sleep") {
+    val clientLimitedConnectionsPerHost: DefaultHttpClient = TestClientAndServer.makeClientLimitedConnectionsPerHost()
+
+    (1 to 10).foreach { i: Int =>
+      getSync("/silent_close_after_response", 200, "OK", clientLimitedConnectionsPerHost)
       // The thread pool should have enough time to detect that the remote side closed the connection before it makes another request
       Thread.sleep(100)
     }
 
-    getChannelPool(TestClientAndServer.clientLimitedConnectionsPerHost).exceptionCount shouldBe 0
-    getChannelPool(TestClientAndServer.clientLimitedConnectionsPerHost).poolDisabled shouldBe false
+    getChannelPool(clientLimitedConnectionsPerHost).exceptionCount shouldBe 0
+    getChannelPool(clientLimitedConnectionsPerHost).poolDisabled shouldBe false
   }
 
-  test("Sync Requests with limited server connections (100 Requests) / Server closes unexpectedly - no sleep") {
+  test("Sync POST Requests with limited server connections (10 Requests) / Server closes unexpectedly - 100ms sleep") {
+    val clientLimitedConnectionsPerHost: DefaultHttpClient = TestClientAndServer.makeClientLimitedConnectionsPerHost()
+
     (1 to 10).foreach { _ =>
-      getSync("/silent_close_after_response/delay/1000", 200, "OK", TestClientAndServer.clientLimitedConnectionsPerHost)
+      val body: String = makeBody(ThreadLocalRandom.current().nextInt(255))
+      postSync("/silent_close_after_response", body, 200, body, clientLimitedConnectionsPerHost)
+      // The thread pool should have enough time to detect that the remote side closed the connection before it makes another request
+      Thread.sleep(100)
     }
 
-    getChannelPool(TestClientAndServer.clientLimitedConnectionsPerHost).exceptionCount shouldBe ChannelPool.ExceptionCountThreshold
-    getChannelPool(TestClientAndServer.clientLimitedConnectionsPerHost).poolDisabled shouldBe true
+    getChannelPool(clientLimitedConnectionsPerHost).exceptionCount shouldBe 0
+    getChannelPool(clientLimitedConnectionsPerHost).poolDisabled shouldBe false
   }
 
-  private def getChannelPool(client: DefaultHttpClient): ChannelPool = {
-    client.getChannelPool("127.0.0.1", port, false, None).getOrElse{ throw new Exception("Missing ChannelPool") }
+  test("Sync GET Requests with limited server connections (10 Requests) / Server closes unexpectedly - no sleep") {
+    val clientLimitedConnectionsPerHost: DefaultHttpClient = TestClientAndServer.makeClientLimitedConnectionsPerHost()
+
+    (1 to 10).foreach { _ =>
+      getSync("/silent_close_after_response/delay/100", 200, "OK", clientLimitedConnectionsPerHost)
+    }
+
+    getChannelPool(clientLimitedConnectionsPerHost).exceptionCount shouldBe ChannelPool.ExceptionCountThreshold
+    getChannelPool(clientLimitedConnectionsPerHost).poolDisabled shouldBe true
   }
 
-  test("Async Requests with limited server connections (100 Requests) / Server closes unexpectedly") {
+  test("Sync POST Requests with limited server connections (10 Requests) / Server closes unexpectedly - no sleep") {
+    val clientLimitedConnectionsPerHost: DefaultHttpClient = TestClientAndServer.makeClientLimitedConnectionsPerHost()
+
+    (1 to 10).foreach { _ =>
+      val body: String = makeBody(ThreadLocalRandom.current().nextInt(255))
+      postSync("/silent_close_after_response/delay/100", body, 200, body, clientLimitedConnectionsPerHost)
+    }
+
+    getChannelPool(clientLimitedConnectionsPerHost).exceptionCount shouldBe ChannelPool.ExceptionCountThreshold
+    getChannelPool(clientLimitedConnectionsPerHost).poolDisabled shouldBe true
+  }
+
+  test("Async GET Requests with limited server connections (100 Requests) / Server closes unexpectedly") {
+    val clientLimitedConnectionsPerHost: DefaultHttpClient = TestClientAndServer.makeClientLimitedConnectionsPerHost()
+
     // Uses async non-blocking calls to make as many connections as possible to the server
-    val futures: Seq[Future[FullStringResponse]] = (1 to 5).map{ _ => getFullStringAsync("/silent_close_after_response", TestClientAndServer.clientLimitedConnectionsPerHost) }
+    val futures: Seq[Future[FullStringResponse]] = (1 to 100).map{ _ => getFullStringAsync("/silent_close_after_response", clientLimitedConnectionsPerHost) }
     val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
     Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
       res.status.code should equal (200)
       res.body should equal ("OK")
+    }
+  }
+
+  test("Async POST Requests with limited server connections (100 Requests) / Server closes unexpectedly") {
+    val clientLimitedConnectionsPerHost: DefaultHttpClient = TestClientAndServer.makeClientLimitedConnectionsPerHost()
+
+    // Uses async non-blocking calls to make as many connections as possible to the server
+    val body: String = makeBody(ThreadLocalRandom.current().nextInt(RandomBodySizeMax))
+    val futures: Seq[Future[FullStringResponse]] = (1 to 100).map{ _ => postFullStringAsync("/silent_close_after_response", body, clientLimitedConnectionsPerHost) }
+    val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
+    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+      res.status.code should equal (200)
+      res.body should equal (body)
+    }
+  }
+
+  test("Async GET Requests with limited server connections (100 Requests) / Server closes unexpectedly w/ Delay") {
+    val clientLimitedConnectionsPerHost: DefaultHttpClient = TestClientAndServer.makeClientLimitedConnectionsPerHost()
+
+    // Uses async non-blocking calls to make as many connections as possible to the server
+    val futures: Seq[Future[FullStringResponse]] = (1 to 100).map{ i: Int => getFullStringAsync(s"/silent_close_after_response/delay/$i", clientLimitedConnectionsPerHost) }
+    val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
+    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+      res.status.code should equal (200)
+      res.body should equal ("OK")
+    }
+  }
+
+  test("Async POST Requests with limited server connections (100 Requests) / Server closes unexpectedly w/ Delay") {
+    val clientLimitedConnectionsPerHost: DefaultHttpClient = TestClientAndServer.makeClientLimitedConnectionsPerHost()
+
+    // Uses async non-blocking calls to make as many connections as possible to the server
+    val body: String = makeBody(ThreadLocalRandom.current().nextInt(RandomBodySizeMax))
+    val futures: Seq[Future[FullStringResponse]] = (1 to 100).map{ i: Int => postFullStringAsync(s"/silent_close_after_response/delay/$i", body, clientLimitedConnectionsPerHost) }
+    val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
+    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+      res.status.code should equal (200)
+      res.body should equal (body)
     }
   }
 
@@ -706,6 +793,10 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     checkIp("1.1.1.1", "X-Forwarded-For-Last-Idx2" -> "1.1.1.1,2.2.2.2,3.3.3.3")
     checkIp("2.2.2.2", "X-Forwarded-For-Last-Idx2" -> "1.1.1.1,2.2.2.2,3.3.3.3,4.4.4.4")
     checkIp("1.1.1.1", "X-Forwarded-For-Last-Idx2" -> "1.1.1.1")
+  }
+
+  private def getChannelPool(client: DefaultHttpClient): ChannelPool = {
+    client.getChannelPool("127.0.0.1", port, false, None).getOrElse{ throw new Exception("Missing ChannelPool") }
   }
 
   private def checkIp(expected: String, headers: (String,String)*): Unit = TestHelpers.withCallerInfo{
