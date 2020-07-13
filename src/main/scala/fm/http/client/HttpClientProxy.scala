@@ -17,5 +17,9 @@ abstract class HttpClientProxy extends HttpClient {
 
   override def execute(r: Request, timeout: Duration): Future[AsyncResponse] = client.execute(r, timeout)
 
+  override def loggingHooksEnabled: Boolean = client.loggingHooksEnabled
+  override def logSuccess(request: Request, requestBody: Option[String], response: Response): Unit = client.logSuccess(request, requestBody, response)
+  override def logException(request: Request, requestBody: Option[String], ex: Throwable): Unit = client.logException(request, requestBody, ex)
+
   override def close(): Unit = client.close()
 }

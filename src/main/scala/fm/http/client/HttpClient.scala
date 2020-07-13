@@ -20,6 +20,7 @@ import java.io.{Closeable, File}
 import java.nio.charset.{Charset, StandardCharsets}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
+import scala.util.{Failure, Success}
 
 /**
  * This holds a single copy of the EventLoopGroup / NettyExecutionContext
@@ -91,6 +92,38 @@ abstract class HttpClient extends Closeable {
    */
   def execute(r: Request, timeout: Duration): Future[AsyncResponse]
 
+  /**
+   * Override this and set to true to enable the logSuccess and logException methods
+   */
+  def loggingHooksEnabled: Boolean = false
+
+  /**
+   * A logging hook that can be used to log the Request and a successful Response.
+   *
+   * This will be called asynchronously (but before the resulting Future is completed).  This does not log
+   * direct calls to the execute() method.
+   */
+  def logSuccess(request: Request, requestBody: Option[String], response: Response): Unit = {}
+
+  /**
+   * A logging hook that can be used to log the Request and an Exception with no Response.
+   *
+   * This will be called asynchronously (but before the resulting Future is completed).  This does not log
+   * direct calls to the execute() method.
+   */
+  def logException(request: Request, requestBody: Option[String], ex: Throwable): Unit = {}
+
+  @inline private def doLog[R <: Response](request: Request, requestBody: Option[String])(f: Request => Future[R]): Future[R] = {
+    if (loggingHooksEnabled) {
+      f(request).andThen {
+        case Success(response) => logSuccess(request, requestBody, response)
+        case Failure(ex) => logException(request, requestBody, ex)
+      }
+    } else {
+      f(request)
+    }
+  }
+
   def close(): Unit
   
   /** Return an HttpClient that will use Basic auth for any calls made by it */
@@ -102,16 +135,45 @@ abstract class HttpClient extends Closeable {
   //
   // Implementations used by the generated code below
   //
-  private def headImpl(url: String, headers: Headers, timeout: Duration): Future[FullResponse] = execute(Request.Head(url, headers), timeout).flatMap{ _.toFullResponse(0) }
-  private def getFullImpl(url: String, headers: Headers, maxLength: Long, timeout: Duration): Future[FullResponse] = getAsyncImpl(url, headers, timeout).flatMap{ _.toFullResponse(maxLength) }
-  private def getFullStringImpl(url: String, headers: Headers, maxLength: Long, timeout: Duration, defaultCharset: Charset): Future[FullStringResponse] = getAsyncImpl(url, headers, timeout).flatMap{ _.toFullStringResponse(maxLength, defaultCharset) }
-  private def postFullImpl(url: String, body: String, headers: Headers, maxLength: Long, timeout: Duration): Future[FullResponse] = postAsyncImpl(url, body, headers, timeout).flatMap{ _.toFullResponse(maxLength) }
-  private def postFullStringImpl(url: String, body: String, headers: Headers, maxLength: Long, timeout: Duration, defaultCharset: Charset): Future[FullStringResponse] = postAsyncImpl(url, body, headers, timeout).flatMap{ _.toFullStringResponse(maxLength, defaultCharset) }
-  private def getAsyncImpl(url: String, headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Get(url, headers), timeout)
-  private def postAsyncImpl(url: String, body: String, headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Post(url, headers, body), timeout)
-  private def postAsyncImpl(url: String, body: Array[Byte], headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Post(url, headers, body), timeout)
-  private def postAsyncImpl(url: String, body: File, headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Post(url, headers, body), timeout)
-  private def postAsyncImpl(url: String, content: LinkedHttpContent, headers: Headers, timeout: Duration): Future[AsyncResponse] = execute(Request.Post(url, headers, content), timeout)
+  private def headImpl(url: String, headers: Headers, timeout: Duration): Future[FullResponse] = {
+    doLog(Request.Head(url, headers), None){ execute(_, timeout).flatMap{ _.toFullResponse(0) } }
+  }
+
+  private def getFullImpl(url: String, headers: Headers, maxLength: Long, timeout: Duration): Future[FullResponse] = {
+    doLog(Request.Get(url, headers), None){ execute(_, timeout).flatMap{ _.toFullResponse(maxLength) } }
+  }
+
+  private def getFullStringImpl(url: String, headers: Headers, maxLength: Long, timeout: Duration, defaultCharset: Charset): Future[FullStringResponse] = {
+    doLog(Request.Get(url, headers), None){ execute(_, timeout).flatMap{ _.toFullStringResponse(maxLength, defaultCharset) } }
+  }
+
+  private def postFullImpl(url: String, body: String, headers: Headers, maxLength: Long, timeout: Duration): Future[FullResponse] = {
+    doLog(Request.Post(url, headers, body), Option(body)){ execute(_, timeout).flatMap{ _.toFullResponse(maxLength) } }
+  }
+
+  private def postFullStringImpl(url: String, body: String, headers: Headers, maxLength: Long, timeout: Duration, defaultCharset: Charset): Future[FullStringResponse] = {
+    doLog(Request.Post(url, headers, body), Option(body)){ execute(_, timeout).flatMap{ _.toFullStringResponse(maxLength, defaultCharset) } }
+  }
+
+  private def getAsyncImpl(url: String, headers: Headers, timeout: Duration): Future[AsyncResponse] = {
+    doLog(Request.Get(url, headers), None){ execute(_, timeout) }
+  }
+
+  private def postAsyncImpl(url: String, body: String, headers: Headers, timeout: Duration): Future[AsyncResponse] = {
+    doLog(Request.Post(url, headers, body), Option(body)){ execute(_, timeout) }
+  }
+
+  private def postAsyncImpl(url: String, body: Array[Byte], headers: Headers, timeout: Duration): Future[AsyncResponse] = {
+    doLog(Request.Post(url, headers, body), None){ execute(_, timeout) }
+  }
+
+  private def postAsyncImpl(url: String, body: File, headers: Headers, timeout: Duration): Future[AsyncResponse] = {
+    doLog(Request.Post(url, headers, body), None){ execute(_, timeout) }
+  }
+
+  private def postAsyncImpl(url: String, content: LinkedHttpContent, headers: Headers, timeout: Duration): Future[AsyncResponse] = {
+    doLog(Request.Post(url, headers, content), None){ execute(_, timeout) }
+  }
 
   //
   // The rest of the file was auto-generated using the following code (copy/:paste into a REPL):
