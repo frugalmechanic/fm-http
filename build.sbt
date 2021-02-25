@@ -4,9 +4,9 @@ name := "fm-http"
 
 description := "Async Http Client & Server for Scala"
 
-scalaVersion := "2.12.11"
+scalaVersion := "2.12.13"
 
-crossScalaVersions := Seq("2.11.12", "2.12.11")
+crossScalaVersions := Seq("2.11.12", "2.12.13")
 
 val fatalWarnings = Seq(
   // Enable -Xlint, but disable the default 'unused' so we can manually specify below
@@ -39,15 +39,16 @@ fork in Test := true
 
 libraryDependencies ++= Seq(
   "com.frugalmechanic" %% "scala-optparse" % "1.1.3",
-  "com.frugalmechanic" %% "fm-common" % "0.45.0",
-  "com.frugalmechanic" %% "fm-lazyseq" % "0.12.0" % "test"
+  "com.frugalmechanic" %% "fm-common" % "0.50.0",
+  "com.frugalmechanic" %% "fm-lazyseq" % "0.14.0" % "test"
 )
 
-val nettyVersion: String = "4.1.50.Final"
+val nettyVersion: String = "4.1.59.Final"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-all" % nettyVersion,
   "io.netty" % "netty-transport-native-epoll" % nettyVersion classifier "linux-x86_64",
+  "io.netty" % "netty-transport-native-epoll" % nettyVersion classifier "linux-aarch_64",
   "io.netty" % "netty-transport-native-kqueue" % nettyVersion classifier "osx-x86_64",
   "com.jcraft" % "jzlib" % "1.1.3", // For Netty 4.X
   "com.github.jnr" % "jnr-posix" % "3.0.42", // POSIX Support (getpid and setssid) for the HttpServerApp
