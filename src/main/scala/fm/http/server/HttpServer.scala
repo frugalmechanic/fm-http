@@ -95,7 +95,6 @@ final case class HttpServer (
     val b: ServerBootstrap = new ServerBootstrap
     b.group(bossGroup, workerGroup)
     b.channel(NativeHelpers.serverSocketChannelClass)
-    b.option[Integer](ChannelOption.SO_BACKLOG, 1024)
     b.localAddress(port)
     b.childOption[java.lang.Boolean](ChannelOption.TCP_NODELAY, true)
     b.childOption[java.lang.Boolean](ChannelOption.AUTO_READ, false)  // ChannelHandlerContext.read() must be explicitly called when we want a message read
