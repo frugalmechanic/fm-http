@@ -328,9 +328,15 @@ final case class DefaultHttpClient(
       newHeaders.host = host
       request.withHeaders(newHeaders)
     } else request
-    
-    // This if the URI part of the request:  /foo/bar?param=value
-    val uri: String = request.requestURI
+
+    val uri: String = if (proxy.exists{ _.passFullURLInRequest }) {
+      // This is the complete URL that is being requested (which is needed for some proxy configurations)
+      // e.g. http://example.com/foo/bar?param=value
+      request.url.toString
+    } else {
+      // This is the path and query params part of the request: /foo/bar?param=value
+      request.requestURI
+    }
     
     val promise: Promise[AsyncResponse] = Promise()
     
@@ -379,8 +385,11 @@ final case class DefaultHttpClient(
     
     val bootstrap: Bootstrap = if (ssl) httpsBootstrap(host, port) else httpBootstrap
 
-    val connectFuture: ChannelFuture = bootstrap.connect(host, port)
-    
+    val connectFuture: ChannelFuture = proxy match {
+      case Some(p: ProxyOptions) if p.bootstrapShouldConnectToProxy => bootstrap.connect(p.host, p.port)
+      case _ => bootstrap.connect(host, port)
+    }
+
     val ch: Channel = connectFuture.channel()
 
     // Note: DefaultHttpClient.enableTimeoutTask will handle canceling the task if the Promise is successfully completed
@@ -424,8 +433,11 @@ final case class DefaultHttpClient(
        def initChannel(ch: SocketChannel): Unit = {
          val p: ChannelPipeline = ch.pipeline()
 
-         // If we are using a proxy then make sure that gets added first
-         proxy.foreach { options: ProxyOptions => p.addFirst(options.makeChannelHandler) }
+         // If we are using a proxy then make sure that gets added first (if it has a ChannelHandler)
+         for {
+           options: ProxyOptions <- proxy
+           channelHandler: ChannelHandler <- options.makeChannelHandler
+         } p.addFirst(channelHandler)
 
          if (ssl) {
            p.addLast("ssl", sslCtx.newHandler(ch.alloc(), host, port))

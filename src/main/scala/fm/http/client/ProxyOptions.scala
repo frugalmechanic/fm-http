@@ -11,7 +11,9 @@ final case class ProxyOptions(
   user: Option[String],
   pass: Option[String]
 ) {
-  def makeChannelHandler: ChannelHandler = proxyType.makeChannelHandler(this)
+  def makeChannelHandler: Option[ChannelHandler] = proxyType.makeChannelHandler(this)
+  def passFullURLInRequest: Boolean = proxyType.passFullURLInRequest
+  def bootstrapShouldConnectToProxy: Boolean = proxyType.bootstrapShouldConnectToProxy
 
   def socketAddress: SocketAddress = {
     if (IP.isValid(host)) new InetSocketAddress(IP(host).inetAddress, port)
