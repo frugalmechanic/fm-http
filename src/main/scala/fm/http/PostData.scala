@@ -58,7 +58,9 @@ sealed trait PostData {
 }
 
 sealed trait MemoryPostData extends PostData {
-  protected final def resource: Resource[InputStream] = MultiUseResource{ new ByteBufInputStream(self.getByteBuf) }
+  // Note: ByteBufInputStream will increase the readerIndex of the ByteBuf instance so we need to duplicate() it first
+  //       if we want the MultiUseResource to work with multiple reads.
+  protected final def resource: Resource[InputStream] = MultiUseResource{ new ByteBufInputStream(self.getByteBuf().duplicate()) }
   
   final def inputStreamResource(autoDecompress: Boolean = true, autoBuffer: Boolean = true): InputStreamResource = InputStreamResource(resource, autoDecompress = autoDecompress, autoBuffer = autoBuffer)
 }
