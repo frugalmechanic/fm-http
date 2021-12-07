@@ -101,7 +101,7 @@ final class Request (
     val tmp: String = if (qIdx != -1) uri.substring(0, qIdx) else uri
 
     // Strip off anything after the #
-    val hIdx: Int = uri.indexOf('#')
+    val hIdx: Int = tmp.indexOf('#')
     if (hIdx != -1) tmp.substring(0, hIdx) else tmp
   }
   
