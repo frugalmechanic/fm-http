@@ -92,6 +92,7 @@ object Headers {
     val X_REQUESTED_WITH: AsciiString = "X-Requested-With"
     val X_FORWARDED_FOR: AsciiString = "X-Forwarded-For"
     val X_FORWARDED_PROTO: AsciiString = "X-Forwarded-Proto"
+    val X_FORWARDED_PORT: AsciiString = "X-Forwarded-Port"
     val X_SSL: AsciiString = "X-SSL"
    
     //
@@ -326,6 +327,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   def xRequestedWith: Option[String] = get(NonStandardNames.X_REQUESTED_WITH)
   def xForwardedFor: Option[String] = get(NonStandardNames.X_FORWARDED_FOR)
   def xForwardedProto: Option[String] = get(NonStandardNames.X_FORWARDED_PROTO)
+  def xForwardedPort: Option[String] = get(NonStandardNames.X_FORWARDED_PORT)
   def xFrameOptions: Option[String] = get(NonStandardNames.X_FRAME_OPTIONS)
   def xXSSProtection: Option[String] = get(NonStandardNames.X_XSS_PROTECTION)
   def xContentTypeOptions: Option[String] = get(NonStandardNames.X_CONTENT_TYPE_OPTIONS)
