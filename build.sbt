@@ -43,13 +43,14 @@ libraryDependencies ++= Seq(
   "com.frugalmechanic" %% "fm-lazyseq" % "0.14.0" % "test"
 )
 
-val nettyVersion: String = "4.1.63.Final"
+val nettyVersion: String = "4.1.77.Final"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-all" % nettyVersion,
   "io.netty" % "netty-transport-native-epoll" % nettyVersion classifier "linux-x86_64",
   "io.netty" % "netty-transport-native-epoll" % nettyVersion classifier "linux-aarch_64",
   "io.netty" % "netty-transport-native-kqueue" % nettyVersion classifier "osx-x86_64",
+  "io.netty" % "netty-transport-native-kqueue" % nettyVersion classifier "osx-aarch_64",
   "com.jcraft" % "jzlib" % "1.1.3", // For Netty 4.X
   "com.github.jnr" % "jnr-posix" % "3.0.42", // POSIX Support (getpid and setssid) for the HttpServerApp
   "org.slf4j" % "slf4j-api" % "1.7.25",
