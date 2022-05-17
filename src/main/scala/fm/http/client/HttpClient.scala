@@ -155,6 +155,18 @@ abstract class HttpClient extends Closeable {
     doLog(Request.Post(url, headers, body), Option(body)){ execute(_, timeout).flatMap{ _.toFullStringResponse(maxLength, defaultCharset) } }
   }
 
+  private def putFullImpl(url: String, body: String, headers: Headers, maxLength: Long, timeout: Duration): Future[FullResponse] = {
+    doLog(Request.Put(url, headers, body), Option(body)){ execute(_, timeout).flatMap{ _.toFullResponse(maxLength) } }
+  }
+
+  private def putFullStringImpl(url: String, body: String, headers: Headers, maxLength: Long, timeout: Duration, defaultCharset: Charset): Future[FullStringResponse] = {
+    doLog(Request.Put(url, headers, body), Option(body)){ execute(_, timeout).flatMap{ _.toFullStringResponse(maxLength, defaultCharset) } }
+  }
+
+  private def deleteImpl(url: String, headers: Headers, timeout: Duration): Future[FullResponse] = {
+    doLog(Request.Delete(url, headers), None){ execute(_, timeout).flatMap{ _.toFullResponse() } }
+  }
+
   private def getAsyncImpl(url: String, headers: Headers, timeout: Duration): Future[AsyncResponse] = {
     doLog(Request.Get(url, headers), None){ execute(_, timeout) }
   }
@@ -173,6 +185,26 @@ abstract class HttpClient extends Closeable {
 
   private def postAsyncImpl(url: String, content: LinkedHttpContent, headers: Headers, timeout: Duration): Future[AsyncResponse] = {
     doLog(Request.Post(url, headers, content), None){ execute(_, timeout) }
+  }
+
+  private def putAsyncImpl(url: String, body: String, headers: Headers, timeout: Duration): Future[AsyncResponse] = {
+    doLog(Request.Put(url, headers, body), Option(body)){ execute(_, timeout) }
+  }
+
+  private def putAsyncImpl(url: String, body: Array[Byte], headers: Headers, timeout: Duration): Future[AsyncResponse] = {
+    doLog(Request.Put(url, headers, body), None){ execute(_, timeout) }
+  }
+
+  private def putAsyncImpl(url: String, body: File, headers: Headers, timeout: Duration): Future[AsyncResponse] = {
+    doLog(Request.Put(url, headers, body), None){ execute(_, timeout) }
+  }
+
+  private def putAsyncImpl(url: String, content: LinkedHttpContent, headers: Headers, timeout: Duration): Future[AsyncResponse] = {
+    doLog(Request.Put(url, headers, content), None){ execute(_, timeout) }
+  }
+
+  private def deleteAsyncImpl(url: String, headers: Headers, timeout: Duration): Future[AsyncResponse] = {
+    doLog(Request.Delete(url, headers), None){ execute(_, timeout) }
   }
 
   //
@@ -208,10 +240,17 @@ println(makeMethodCombinations("getFull", "getFullImpl", "Future[FullResponse]",
 println(makeMethodCombinations("getFullString", "getFullStringImpl", "Future[FullStringResponse]", Vector(Param("url", "String")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("maxLength", "Long", "defaultMaxLength"), Param("timeout", "Duration", "defaultResponseTimeout"), Param("defaultCharset", "Charset", "defaultCharset")), comment = "Perform a GET request returning the FullStringResponse"))
 println(makeMethodCombinations("postFull", "postFullImpl", "Future[FullResponse]", Vector(Param("url", "String"), Param("body", "String")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("maxLength", "Long", "defaultMaxLength"), Param("timeout", "Duration", "defaultResponseTimeout")), comment = "Perform a POST request returning the FullResponse"))
 println(makeMethodCombinations("postFullString", "postFullStringImpl", "Future[FullStringResponse]", Vector(Param("url", "String"), Param("body", "String")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("maxLength", "Long", "defaultMaxLength"), Param("timeout", "Duration", "defaultResponseTimeout"), Param("defaultCharset", "Charset", "defaultCharset")), comment = "Perform a POST request returning the FullStringResponse"))
+println(makeMethodCombinations("putFull", "putFullImpl", "Future[FullResponse]", Vector(Param("url", "String"), Param("body", "String")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("maxLength", "Long", "defaultMaxLength"), Param("timeout", "Duration", "defaultResponseTimeout")), comment = "Perform a PUT request returning the FullResponse"))
+println(makeMethodCombinations("putFullString", "putFullStringImpl", "Future[FullStringResponse]", Vector(Param("url", "String"), Param("body", "String")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("maxLength", "Long", "defaultMaxLength"), Param("timeout", "Duration", "defaultResponseTimeout"), Param("defaultCharset", "Charset", "defaultCharset")), comment = "Perform a PUT request returning the FullStringResponse"))
+println(makeMethodCombinations("delete", "deleteImpl", "Future[FullResponse]", Vector(Param("url", "String")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("timeout", "Duration", "defaultResponseTimeout")), comment = "Perform a DELETE request."))
 println(makeMethodCombinations("getAsync", "getAsyncImpl", "Future[AsyncResponse]", Vector(Param("url", "String")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("timeout", "Duration", "defaultResponseTimeout")), comment = "Perform a GET request returning an AsyncResponse for reading arbitrarily long response bodies"))
 println(makeMethodCombinations("postAsync", "postAsyncImpl", "Future[AsyncResponse]", Vector(Param("url", "String"), Param("body", "Array[Byte]")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("timeout", "Duration", "defaultResponseTimeout")), comment = "Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies"))
 println(makeMethodCombinations("postAsync", "postAsyncImpl", "Future[AsyncResponse]", Vector(Param("url", "String"), Param("body", "String")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("timeout", "Duration", "defaultResponseTimeout")), comment = "Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies"))
 println(makeMethodCombinations("postAsync", "postAsyncImpl", "Future[AsyncResponse]", Vector(Param("url", "String"), Param("body", "File")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("timeout", "Duration", "defaultResponseTimeout")), comment = "Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies"))
+println(makeMethodCombinations("putAsync", "putAsyncImpl", "Future[AsyncResponse]", Vector(Param("url", "String"), Param("body", "Array[Byte]")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("timeout", "Duration", "defaultResponseTimeout")), comment = "Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies"))
+println(makeMethodCombinations("putAsync", "putAsyncImpl", "Future[AsyncResponse]", Vector(Param("url", "String"), Param("body", "String")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("timeout", "Duration", "defaultResponseTimeout")), comment = "Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies"))
+println(makeMethodCombinations("putAsync", "putAsyncImpl", "Future[AsyncResponse]", Vector(Param("url", "String"), Param("body", "File")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("timeout", "Duration", "defaultResponseTimeout")), comment = "Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies"))
+println(makeMethodCombinations("deleteAsync", "deleteAsyncImpl", "Future[AsyncResponse]", Vector(Param("url", "String")), Vector(Param("headers", "Headers", "defaultHeaders"), Param("timeout", "Duration", "defaultResponseTimeout")), comment = "Perform a DELETE request"))
 
  */
   /** Perform a HEAD request.  Always returns a FullResponse because the body will be empty */
@@ -370,6 +409,90 @@ println(makeMethodCombinations("postAsync", "postAsyncImpl", "Future[AsyncRespon
   /** Perform a POST request returning the FullStringResponse */
   final def postFullString(url: String, body: String, headers: Headers, maxLength: Long, timeout: Duration, defaultCharset: Charset): Future[FullStringResponse] = postFullStringImpl(url, body, headers, maxLength, timeout, defaultCharset)
 
+  /** Perform a PUT request returning the FullResponse */
+  final def putFull(url: String, body: String): Future[FullResponse] = putFullImpl(url, body, defaultHeaders, defaultMaxLength, defaultResponseTimeout)
+
+  /** Perform a PUT request returning the FullResponse */
+  final def putFull(url: String, body: String, headers: Headers): Future[FullResponse] = putFullImpl(url, body, headers, defaultMaxLength, defaultResponseTimeout)
+
+  /** Perform a PUT request returning the FullResponse */
+  final def putFull(url: String, body: String, maxLength: Long): Future[FullResponse] = putFullImpl(url, body, defaultHeaders, maxLength, defaultResponseTimeout)
+
+  /** Perform a PUT request returning the FullResponse */
+  final def puFull(url: String, body: String, timeout: Duration): Future[FullResponse] = putFullImpl(url, body, defaultHeaders, defaultMaxLength, timeout)
+
+  /** Perform a PUT request returning the FullResponse */
+  final def putFull(url: String, body: String, headers: Headers, maxLength: Long): Future[FullResponse] = putFullImpl(url, body, headers, maxLength, defaultResponseTimeout)
+
+  /** Perform a PUT request returning the FullResponse */
+  final def putFull(url: String, body: String, headers: Headers, timeout: Duration): Future[FullResponse] = putFullImpl(url, body, headers, defaultMaxLength, timeout)
+
+  /** Perform a PUT request returning the FullResponse */
+  final def putFull(url: String, body: String, maxLength: Long, timeout: Duration): Future[FullResponse] = putFullImpl(url, body, defaultHeaders, maxLength, timeout)
+
+  /** Perform a PUT request returning the FullResponse */
+  final def putFull(url: String, body: String, headers: Headers, maxLength: Long, timeout: Duration): Future[FullResponse] = putFullImpl(url, body, headers, maxLength, timeout)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String): Future[FullStringResponse] = putFullStringImpl(url, body, defaultHeaders, defaultMaxLength, defaultResponseTimeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, headers: Headers): Future[FullStringResponse] = putFullStringImpl(url, body, headers, defaultMaxLength, defaultResponseTimeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, maxLength: Long): Future[FullStringResponse] = putFullStringImpl(url, body, defaultHeaders, maxLength, defaultResponseTimeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, timeout: Duration): Future[FullStringResponse] = putFullStringImpl(url, body, defaultHeaders, defaultMaxLength, timeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, defaultCharset: Charset): Future[FullStringResponse] = putFullStringImpl(url, body, defaultHeaders, defaultMaxLength, defaultResponseTimeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, headers: Headers, maxLength: Long): Future[FullStringResponse] = putFullStringImpl(url, body, headers, maxLength, defaultResponseTimeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, headers: Headers, timeout: Duration): Future[FullStringResponse] = putFullStringImpl(url, body, headers, defaultMaxLength, timeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, headers: Headers, defaultCharset: Charset): Future[FullStringResponse] = putFullStringImpl(url, body, headers, defaultMaxLength, defaultResponseTimeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, maxLength: Long, timeout: Duration): Future[FullStringResponse] = putFullStringImpl(url, body, defaultHeaders, maxLength, timeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, maxLength: Long, defaultCharset: Charset): Future[FullStringResponse] = putFullStringImpl(url, body, defaultHeaders, maxLength, defaultResponseTimeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, timeout: Duration, defaultCharset: Charset): Future[FullStringResponse] = putFullStringImpl(url, body, defaultHeaders, defaultMaxLength, timeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, headers: Headers, maxLength: Long, timeout: Duration): Future[FullStringResponse] = putFullStringImpl(url, body, headers, maxLength, timeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, headers: Headers, maxLength: Long, defaultCharset: Charset): Future[FullStringResponse] = putFullStringImpl(url, body, headers, maxLength, defaultResponseTimeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, headers: Headers, timeout: Duration, defaultCharset: Charset): Future[FullStringResponse] = putFullStringImpl(url, body, headers, defaultMaxLength, timeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, maxLength: Long, timeout: Duration, defaultCharset: Charset): Future[FullStringResponse] = putFullStringImpl(url, body, defaultHeaders, maxLength, timeout, defaultCharset)
+
+  /** Perform a PUT request returning the FullStringResponse */
+  final def putFullString(url: String, body: String, headers: Headers, maxLength: Long, timeout: Duration, defaultCharset: Charset): Future[FullStringResponse] = putFullStringImpl(url, body, headers, maxLength, timeout, defaultCharset)
+
+  /** Perform a DELETE request.  Always returns a FullResponse because the body will be empty */
+  final def delete(url: String): Future[FullResponse] = deleteImpl(url, defaultHeaders, defaultResponseTimeout)
+
+  /** Perform a DELETE request. */
+  final def delete(url: String, headers: Headers): Future[FullResponse] = deleteImpl(url, headers, defaultResponseTimeout)
+
+  /** Perform a DELETE request. */
+  final def delete(url: String, timeout: Duration): Future[FullResponse] = deleteImpl(url, defaultHeaders, timeout)
+
+  /** Perform a DELETE request. */
+  final def delete(url: String, headers: Headers, timeout: Duration): Future[FullResponse] = deleteImpl(url, headers, timeout)
+
   /** Perform a GET request returning an AsyncResponse for reading arbitrarily long response bodies */
   final def getAsync(url: String): Future[AsyncResponse] = getAsyncImpl(url, defaultHeaders, defaultResponseTimeout)
 
@@ -423,4 +546,58 @@ println(makeMethodCombinations("postAsync", "postAsyncImpl", "Future[AsyncRespon
 
   /** Perform a POST request returning an AsyncResponse for reading arbitrarily long response bodies */
   final def postAsync(url: String, body: LinkedHttpContent, headers: Headers, timeout: Duration): Future[AsyncResponse] = postAsyncImpl(url, body, headers, timeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: Array[Byte]): Future[AsyncResponse] = putAsyncImpl(url, body, defaultHeaders, defaultResponseTimeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: Array[Byte], headers: Headers): Future[AsyncResponse] = putAsyncImpl(url, body, headers, defaultResponseTimeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: Array[Byte], timeout: Duration): Future[AsyncResponse] = putAsyncImpl(url, body, defaultHeaders, timeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: Array[Byte], headers: Headers, timeout: Duration): Future[AsyncResponse] = putAsyncImpl(url, body, headers, timeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: String): Future[AsyncResponse] = putAsyncImpl(url, body, defaultHeaders, defaultResponseTimeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: String, headers: Headers): Future[AsyncResponse] = putAsyncImpl(url, body, headers, defaultResponseTimeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: String, timeout: Duration): Future[AsyncResponse] = putAsyncImpl(url, body, defaultHeaders, timeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: String, headers: Headers, timeout: Duration): Future[AsyncResponse] = putAsyncImpl(url, body, headers, timeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: File): Future[AsyncResponse] = putAsyncImpl(url, body, defaultHeaders, defaultResponseTimeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: LinkedHttpContent): Future[AsyncResponse] = putAsyncImpl(url, body, defaultHeaders, defaultResponseTimeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: File, headers: Headers): Future[AsyncResponse] = putAsyncImpl(url, body, headers, defaultResponseTimeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: File, timeout: Duration): Future[AsyncResponse] = putAsyncImpl(url, body, defaultHeaders, timeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: File, headers: Headers, timeout: Duration): Future[AsyncResponse] = putAsyncImpl(url, body, headers, timeout)
+
+  /** Perform a PUT request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def putAsync(url: String, body: LinkedHttpContent, headers: Headers, timeout: Duration): Future[AsyncResponse] = putAsyncImpl(url, body, headers, timeout)
+
+  /** Perform a DELETE request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def deleteAsync(url: String): Future[AsyncResponse] = deleteAsyncImpl(url, defaultHeaders, defaultResponseTimeout)
+
+  /** Perform a DELETE request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def deleteAsync(url: String, headers: Headers): Future[AsyncResponse] = deleteAsyncImpl(url, headers, defaultResponseTimeout)
+
+  /** Perform a DELETE request returning an AsyncResponse for reading arbitrarily long response bodies */
+  final def deleteAsync(url: String, timeout: Duration): Future[AsyncResponse] = deleteAsyncImpl(url, defaultHeaders, timeout)
+
+  /** Perform a DELETE request returning an AsyncResponse */
+  final def deleteAsync(url: String, headers: Headers, timeout: Duration): Future[AsyncResponse] = deleteAsyncImpl(url, headers, timeout)
 }

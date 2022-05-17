@@ -27,7 +27,7 @@ import scala.util.{Failure, Success, Try}
 
 object Request {
   def Get(url: String, headers: Headers): FullRequest = FullRequest(HttpMethod.GET, URL(url), headers)
-  
+
   def Head(url: String, headers: Headers): FullRequest = FullRequest(HttpMethod.HEAD, URL(url), headers)
   
   def Post(url: String, headers: Headers): FullRequest = FullRequest(HttpMethod.POST, URL(url), headers)
@@ -37,6 +37,16 @@ object Request {
   def Post(url: String, headers: Headers, head: LinkedHttpContent): AsyncRequest = AsyncRequest(HttpMethod.POST, URL(url), headers, Future.successful(Option(head)))
   def Post(url: String, headers: Headers, head: Future[Option[LinkedHttpContent]]): AsyncRequest = AsyncRequest(HttpMethod.POST, URL(url), headers, head)
   def Post(url: String, headers: Headers, file: File): FileRequest = FileRequest(HttpMethod.POST, URL(url), headers, file)
+
+  def Put(url: String, headers: Headers): FullRequest = FullRequest(HttpMethod.PUT, URL(url), headers)
+  def Put(url: String, headers: Headers, data: String): FullRequest = FullRequest(HttpMethod.PUT, URL(url), headers, Unpooled.copiedBuffer(data, CharsetUtil.UTF_8))
+  def Put(url: String, headers: Headers, data: Array[Byte]): FullRequest = FullRequest(HttpMethod.PUT, URL(url), headers, Unpooled.copiedBuffer(data))
+  def Put(url: String, headers: Headers, buf: ByteBuf): FullRequest = FullRequest(HttpMethod.PUT, URL(url), headers, buf)
+  def Put(url: String, headers: Headers, head: LinkedHttpContent): AsyncRequest = AsyncRequest(HttpMethod.PUT, URL(url), headers, Future.successful(Option(head)))
+  def Put(url: String, headers: Headers, head: Future[Option[LinkedHttpContent]]): AsyncRequest = AsyncRequest(HttpMethod.PUT, URL(url), headers, head)
+  def Put(url: String, headers: Headers, file: File): FileRequest = FileRequest(HttpMethod.PUT, URL(url), headers, file)
+
+  def Delete(url: String, headers: Headers): FullRequest = FullRequest(HttpMethod.DELETE, URL(url), headers)
 }
 
 sealed trait Request {
