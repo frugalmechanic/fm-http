@@ -1,12 +1,10 @@
-FMPublic
-
 name := "fm-http"
 
 description := "Async Http Client & Server for Scala"
 
-scalaVersion := "2.12.13"
+scalaVersion := "2.12.15"
 
-crossScalaVersions := Seq("2.11.12", "2.12.13")
+crossScalaVersions := Seq("2.11.12", "2.12.15")
 
 val fatalWarnings = Seq(
   // Enable -Xlint, but disable the default 'unused' so we can manually specify below
@@ -31,11 +29,11 @@ scalacOptions := Seq(
 ) else Nil) ++ (if (scalaVersion.value.startsWith("2.12")) fatalWarnings else Nil)
 
 // -Ywarn-unused-import/-Xfatal-warnings casues issues in the REPL and also during doc generation
-scalacOptions in (Compile, console) --= fatalWarnings
-scalacOptions in (Test, console) --= fatalWarnings
-scalacOptions in (Compile, doc) --= fatalWarnings
+Compile / console / scalacOptions --= fatalWarnings
+Test / console / scalacOptions --= fatalWarnings
+Compile / doc / scalacOptions --= fatalWarnings
 
-fork in Test := true
+Test / fork := true
 
 libraryDependencies ++= Seq(
   "com.frugalmechanic" %% "scala-optparse" % "1.1.3",
@@ -58,3 +56,5 @@ libraryDependencies ++= Seq(
   "javax.mail" % "mail" % "1.4.1",
   "org.scalatest" %% "scalatest" % "3.0.5" % "test"
 )
+
+publishTo := sonatypePublishToBundle.value
