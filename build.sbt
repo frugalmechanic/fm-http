@@ -41,7 +41,7 @@ libraryDependencies ++= Seq(
   "com.frugalmechanic" %% "fm-lazyseq" % "0.14.0" % "test"
 )
 
-val nettyVersion: String = "4.1.77.Final"
+val nettyVersion: String = "4.1.80.Final"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-all" % nettyVersion,
