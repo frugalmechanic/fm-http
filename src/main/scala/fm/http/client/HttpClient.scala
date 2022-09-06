@@ -41,7 +41,11 @@ object HttpClient {
     followRedirects: Boolean = true, // Should 301/302 redirects be followed for GET or HEAD requests?
     maxRedirectCount: Int = 5,  // The maximum number of 301/302 redirects to follow for a GET or HEAD request if followRedirects is true
     disableSSLCertVerification: Boolean = false, // Do not verify SSL certs (SHOULD NOT USE IN PRODUCTION)
-    autoDecompress: Boolean = true // Automatically de-compress gzip/deflate encoded responses
+    autoDecompress: Boolean = true, // Automatically de-compress gzip/deflate encoded responses
+    soKeepAlive: Boolean = true,    // SO_KEEPALIVE
+    tcpKeepAliveIdle: Int = 60,     // TCP_KEEPIDLE
+    tcpKeepAliveInterval: Int = 60, // TCP_KEEPINTVL
+    tcpKeepAliveCount: Int = 9      // TCP_KEEPCNT
   ): DefaultHttpClient = DefaultHttpClient(
     proxy = proxy,
     defaultMaxLength = defaultMaxLength,
@@ -56,7 +60,11 @@ object HttpClient {
     followRedirects = followRedirects,
     maxRedirectCount = maxRedirectCount,
     disableSSLCertVerification = disableSSLCertVerification,
-    autoDecompress = autoDecompress
+    autoDecompress = autoDecompress,
+    soKeepAlive = soKeepAlive,
+    tcpKeepAliveIdle = tcpKeepAliveIdle,
+    tcpKeepAliveInterval = tcpKeepAliveInterval,
+    tcpKeepAliveCount = tcpKeepAliveCount
   )
   
   private val DefaultHeaders: ImmutableHeaders = {

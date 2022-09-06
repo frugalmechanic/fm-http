@@ -20,6 +20,7 @@ import fm.common.{Logging, Service, URI, URL}
 import fm.http._
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel._
+import io.netty.channel.epoll.{EpollChannelOption, EpollEventLoopGroup}
 import io.netty.channel.group.{ChannelGroup, DefaultChannelGroup}
 import io.netty.channel.socket.SocketChannel
 import io.netty.handler.codec.http.{HttpClientCodec, HttpMethod}
@@ -159,7 +160,11 @@ final case class DefaultHttpClient(
   followRedirects: Boolean, // Should 301/302 redirects be followed for GET or HEAD requests?
   maxRedirectCount: Int, // The maximum number of 301/302 redirects to follow for a GET or HEAD request
   disableSSLCertVerification: Boolean, // Do not verify SSL certs (SHOULD NOT USE IN PRODUCTION)
-  autoDecompress: Boolean
+  autoDecompress: Boolean,
+  soKeepAlive: Boolean,      // SO_KEEPALIVE
+  tcpKeepAliveIdle: Int,     // TCP_KEEPIDLE
+  tcpKeepAliveInterval: Int, // TCP_KEEPINTVL
+  tcpKeepAliveCount: Int     // TCP_KEEPCNT
 ) extends HttpClient with Logging {
   import DefaultHttpClient.{EndPoint, TimeoutTask, workerGroup}
 
@@ -429,6 +434,17 @@ final case class DefaultHttpClient(
     b.group(workerGroup)
     b.channel(NativeHelpers.socketChannelClass)
     b.option[java.lang.Boolean](ChannelOption.AUTO_READ, true) // Note: We disable AUTO_READ as soon as we start receiving a message
+
+    if (soKeepAlive) {
+      b.option[java.lang.Boolean](ChannelOption.SO_KEEPALIVE, true)
+
+      if (workerGroup.isInstanceOf[EpollEventLoopGroup]) {
+        b.option[Integer](EpollChannelOption.TCP_KEEPIDLE, tcpKeepAliveIdle)
+        b.option[Integer](EpollChannelOption.TCP_KEEPINTVL, tcpKeepAliveInterval)
+        b.option[Integer](EpollChannelOption.TCP_KEEPCNT, tcpKeepAliveCount)
+      }
+    }
+
     b.handler(new ChannelInitializer[SocketChannel] {
        def initChannel(ch: SocketChannel): Unit = {
          val p: ChannelPipeline = ch.pipeline()
