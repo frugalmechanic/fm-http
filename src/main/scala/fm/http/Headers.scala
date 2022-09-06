@@ -29,9 +29,11 @@ import scala.util.Try
 import scala.util.matching.Regex
 
 object Headers {  
-  val empty: Headers = ImmutableHeaders(EmptyHttpHeaders.INSTANCE)
+  val empty: ImmutableHeaders = ImmutableHeaders(EmptyHttpHeaders.INSTANCE)
   
   def apply(headerValues: (CharSequence, Any)*): ImmutableHeaders = {
+    if (headerValues.isEmpty) return empty
+
     val headers: MutableHeaders = MutableHeaders()
     headers.withHeaders(headerValues:_*)
     
