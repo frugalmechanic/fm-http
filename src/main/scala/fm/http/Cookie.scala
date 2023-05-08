@@ -16,8 +16,8 @@
 package fm.http
 
 import io.netty.handler.codec.http.cookie.{Cookie => NettyCookie, ClientCookieDecoder => NettyClientCookieDecoder, ServerCookieDecoder => NettyServerCookieDecoder, DefaultCookie => NettyDefaultCookie}
-import scala.collection.JavaConverters._
 import scala.util.Try
+import fm.common.JavaConverters._
 import fm.common.Implicits._
 
 object Cookie {

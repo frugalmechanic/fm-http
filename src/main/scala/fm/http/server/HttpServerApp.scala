@@ -17,6 +17,7 @@ package fm.http.server
 
 import com.frugalmechanic.optparse._
 import fm.common.Implicits._
+import fm.common.JavaConverters._
 import fm.common.Logging
 import java.io.{BufferedReader, InputStreamReader, OutputStream, PrintStream}
 import java.net.{HttpURLConnection, URL}
@@ -25,7 +26,6 @@ import jnr.posix.POSIXFactory
 import jnr.posix.util.DefaultPOSIXHandler
 import org.slf4j.LoggerFactory
 import scala.util.control.Breaks._
-import scala.collection.JavaConverters._
 import sun.misc.{Signal, SignalHandler}
 
 abstract class HttpServerApp extends Logging {
@@ -79,7 +79,7 @@ abstract class HttpServerApp extends Logging {
   def main(args: Array[String]): Unit = {
     // Exit on uncaught exceptions
     Thread.currentThread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler{
-      def uncaughtException(t:Thread, ex:Throwable) {
+      def uncaughtException(t:Thread, ex:Throwable): Unit = {
         logger.error("Uncaught Exception!", ex)
         System.exit(1)
       }
@@ -106,7 +106,7 @@ abstract class HttpServerApp extends Logging {
    * Parses the value of the --port option
    */
   private def parsePorts(ports: Seq[String]): Set[Int] = try {
-    ports.flatMap{ _.split("""[\s,]+""") }.map{ _.toInt }.toSet
+    ports.flatMap{ _.split("""[\s,]+""").toIndexedSeq }.map{ (s: String) => s.toInt }.toSet
   } catch { case ex: NumberFormatException => println("Invalid Port: "+ex.getMessage); sys.exit(-1) }
   
   /**
@@ -237,7 +237,7 @@ abstract class HttpServerApp extends Logging {
     args += "--start"
     if (ports.nonEmpty) args ++= Seq("--port", ports.mkString(","))
     
-    args.result
+    args.result()
   }
   
   def shutdownPorts(ports: Set[Int]): Unit = {
@@ -250,7 +250,7 @@ abstract class HttpServerApp extends Logging {
       // Wait up to 90 seconds for the servers to stop responding
       for(i <- 1 to 90) {
         waitingForPorts = waitingForPorts.filter{alive}
-        if (waitingForPorts.isEmpty) break
+        if (waitingForPorts.isEmpty) break()
         Thread.sleep(1000)
       }
     }

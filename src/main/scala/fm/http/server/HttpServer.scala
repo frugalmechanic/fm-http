@@ -51,7 +51,7 @@ object HttpServer {
     private[this] val server: scala.ref.WeakReference[HttpServer] = new scala.ref.WeakReference(_server)
     
     override def run: Unit = try {
-      server.get.foreach{ server: HttpServer => Await.result(server.shutdown(), Duration.Inf) }
+      server.get.foreach{ (server: HttpServer) => Await.result(server.shutdown(), Duration.Inf) }
     } catch {
       case ex: Throwable => logger.error(s"Caught Exception in WebServer ($name) Shutdown Hook: "+ ex)
     }
@@ -176,7 +176,7 @@ final case class HttpServer (
   }
   
   private def waitForChannelsToFinish(seconds: Int, promise: Promise[Unit]): Unit = {    
-    import scala.collection.JavaConverters._
+    import fm.common.JavaConverters._
     
     val outstandingRequests: Int = allChannels.asScala.count{ NettyHttpServerPipelineHandler.isProcessingRequest }
     

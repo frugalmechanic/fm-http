@@ -94,9 +94,9 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
     var idle: IdleChannel = null
 
     // Keep polling IdleChannels until we either get a null or an active channel
-    do {
+    while ({ {
       idle = idleChannels.poll()
-    } while (null != idle && !idle.channel.isActive)
+    } ; null != idle && !idle.channel.isActive}) ()
     
     if (null != idle) {
       trace(s"checkout() - Using Idle: $idle")
@@ -146,7 +146,7 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
     
     var doRetry: Boolean = false
     
-    do {
+    while ({ {
       doRetry = false
     
       val waiting: Promise[Channel] = waitingQueue.poll()
@@ -154,7 +154,7 @@ final case class ChannelPool(label: String, newChannel: ChannelPool => Future[Ch
       if (null == waiting) idleChannels.push(IdleChannel(ch, System.currentTimeMillis()))
       else if (!waiting.trySuccess(ch)) doRetry = true
       
-    } while (doRetry)
+    } ; doRetry}) ()
   }
   
   private def remove(ch: Channel): Unit = synchronized {

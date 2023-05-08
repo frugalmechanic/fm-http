@@ -151,8 +151,8 @@ object RouteMatchers {
   // These can be used to extract explicit types from the interpolation matching:
   //    case => simple"/path/${INT(id)}" => call(id)  // id is of type Int
   //
-  object INT  { def unapply(x: String): Option[Int]  = x.toIntOption  }
-  object LONG { def unapply(x: String): Option[Long] = x.toLongOption }
+  object INT  { def unapply(x: String): Option[Int]  = x.toIntOptionCached  }
+  object LONG { def unapply(x: String): Option[Long] = x.toLongOptionCached }
   object BOOL { def unapply(x: String): Option[Boolean] = x.parseBoolean }
   
   val GET         = HttpMethodMatcher(HttpMethod.GET)

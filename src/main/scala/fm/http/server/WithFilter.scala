@@ -31,7 +31,7 @@ trait WithFilter[+A <: WithFilter[A]] { self: A =>
   /**
    * Run any RequestHandlers returned by this RequestRouter through a sequence of RequestFilter
    */
-  final def withFilters(filters: TraversableOnce[RequestFilter]): A = {
+  final def withFilters(filters: Seq[RequestFilter]): A = {
     filters.foldRight(this){ (filter: RequestFilter, newHandler: A) => newHandler.withFilter(filter) }
   }
 }

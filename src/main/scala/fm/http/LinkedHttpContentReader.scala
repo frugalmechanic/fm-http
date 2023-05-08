@@ -89,7 +89,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
   }
   
   def readToStringWithDetectedCharset(maxLength: Long = Long.MaxValue, defaultEncoding: Charset = CharsetUtil.ISO_8859_1): Future[String] = {
-    readToByteArray(maxLength).map{ bytes: Array[Byte] =>
+    readToByteArray(maxLength).map{ (bytes: Array[Byte]) =>
       val charset: Option[Charset] = IOUtils.detectCharset(new ByteArrayInputStream(bytes), false)
       
       // The default charset for text should be Latin-1 according to http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.7.1
@@ -120,7 +120,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
       if (bytesWritten > maxLength) throw new BodyTooLargeException(s"Body exceeds maxLength.  Body Length (so far): $bytesWritten  Specified Max Length: $maxLength")
       buf.readBytes(os, readableBytes)
       os
-    }.map{ _ => Unit }
+    }.map{ _ => () }
     
     f.onComplete{
       case Success(_) => os.close()
@@ -136,7 +136,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
    * This is an asynchronous foreach where 'f' is called for each ByteBuf as the data is available.
    * @return A future is returned that is completed when 'f' has been called for each chunk.
    */
-  def foreach[U](f: ByteBuf => U): Future[Unit] = foldLeft[Unit](()){ (_, buf) => f(buf) }.map{ _ => Unit }
+  def foreach[U](f: ByteBuf => U): Future[Unit] = foldLeft[Unit](()){ (_, buf) => f(buf) }.map{ _ => () }
   
   /**
    * This is an asynchronous foldLeft where op is called only when the chunks are ready.
@@ -158,7 +158,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
     // referencing the entire POST body in memory
     current = null
     
-    completedPromise.completeWith(p.future.map{ _ => Unit })
+    completedPromise.completeWith(p.future.map{ _ => () })
     
     p.future
   }
@@ -181,7 +181,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
       ctx.read()
     }
 
-    chunk.onComplete{ t: Try[Option[LinkedHttpContent]] =>
+    chunk.onComplete{ (t: Try[Option[LinkedHttpContent]]) =>
       t match {
         case Failure(ex) => p.failure(ex)
         case Success(opt) => opt match {
@@ -203,7 +203,7 @@ final class LinkedHttpContentReader(is100ContinueExpected: Boolean, head: Future
 
   def discardContent(): Future[Unit] = {
     if (logger.isTraceEnabled) logger.trace("discardContent()")
-    foldLeft(()){ (_, _: ByteBuf) => Unit }
+    foldLeft(()){ (_, _: ByteBuf) => () }
   }
 
   def close(): Unit = try {

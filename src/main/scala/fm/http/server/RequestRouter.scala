@@ -133,7 +133,7 @@ abstract class RequestRouterBase extends RequestRouter {
   protected def afterShutdownImpl() : Unit = {}
 }
 
-final case object EmptyRequestRouter extends RequestRouter {
+case object EmptyRequestRouter extends RequestRouter {
   def lookup(request: Request): Option[RequestHandler] = None
 }
 
@@ -182,12 +182,9 @@ final case class ErrorHandlerRequestRouter(router: RequestRouter, errorHandler: 
 
 final case class MultiRequestRouter(routers: Seq[RequestRouter]) extends RequestRouter {
   def lookup(request: Request): Option[RequestHandler] = {
-    routers.foreach { router: RequestRouter =>
-      val res: Option[RequestHandler] = router.lookup(request)
-      if (res.isDefined) return res
+    routers.findMapped{ (router: RequestRouter) =>
+      router.lookup(request)
     }
-    
-    None
   }
   
   override def beforeStartup():  Unit = routers.foreach{ _.beforeStartup()  }

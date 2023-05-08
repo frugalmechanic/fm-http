@@ -59,7 +59,7 @@ final class LinkedHttpContent(data: ByteBuf, next: => Future[Option[LinkedHttpCo
    *  false - We don't know if this is the last content chunk
    */
   def isEndOfContent: Boolean = {
-    tail.value.exists { t: Try[Option[LinkedHttpContent]] =>
+    tail.value.exists { (t: Try[Option[LinkedHttpContent]]) =>
       // The next Option[LinkedHttpContent] should be None if this is the last content
       t.map{ _.isEmpty }.getOrElse(false)
     }

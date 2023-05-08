@@ -17,13 +17,13 @@ package fm.http.server
 
 import fm.common.{IP, Logging, QueryParams, UUID}
 import fm.common.Implicits._
+import fm.common.JavaConverters._
 import fm.http._
 import io.netty.buffer.ByteBuf
 import java.io.Closeable
 import java.util.IdentityHashMap
 import io.netty.handler.codec.http._
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder
-import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future, Promise}
 
 object Request {
@@ -149,7 +149,7 @@ final class Request (
       content.foldLeft(decoder){ (decoder: HttpPostRequestDecoder, buf: ByteBuf) =>
         decoder.offer(new DefaultHttpContent(buf))
         decoder
-      }.map{ decoder: HttpPostRequestDecoder =>
+      }.map{ (decoder: HttpPostRequestDecoder) =>
         decoder.offer(LastHttpContent.EMPTY_LAST_CONTENT)
         PostBody.fromNetty(decoder.getBodyHttpDatas().asScala.toVector)
       }
@@ -172,7 +172,7 @@ final class Request (
   def close(t: Throwable): Unit = {
     if (null == t) completedPromise.trySuccess(()) else completedPromise.tryFailure(t)
     
-    postDecoder.foreach { decoder: HttpPostRequestDecoder =>
+    postDecoder.foreach { (decoder: HttpPostRequestDecoder) =>
       try {
         decoder.destroy()
       } catch {

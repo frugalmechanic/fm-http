@@ -15,8 +15,9 @@
  */
 package fm.http
 
-import fm.common.Implicits._
 import fm.common.{Base64, ImmutableDate, IndexedSeqProxy}
+import fm.common.Implicits._
+import fm.common.JavaConverters._
 import java.nio.charset.StandardCharsets
 import java.util.Date
 import io.netty.handler.codec.http.{DefaultHttpHeaders, EmptyHttpHeaders, HttpHeaderNames, HttpHeaders}
@@ -24,7 +25,6 @@ import io.netty.handler.codec.http.cookie.{ClientCookieEncoder, ServerCookieEnco
 import io.netty.util.AsciiString
 import java.time._
 import java.time.format.DateTimeFormatter
-import scala.collection.JavaConverters._
 import scala.util.Try
 import scala.util.matching.Regex
 
@@ -129,7 +129,7 @@ object Headers {
     case ex: Exception => None
   }
   
-  def makeBasicAuthorization(user: String, pass: String): String = "Basic "+Base64.encodeBytes((user+":"+pass).getBytes(StandardCharsets.ISO_8859_1))
+  def makeBasicAuthorization(user: String, pass: String): String = "Basic "+Base64.encode((user+":"+pass).getBytes(StandardCharsets.ISO_8859_1))
   
   /**
    * Given the value of the WWW-Authenticate or Authorization headers parse the Digest auth params
@@ -137,13 +137,13 @@ object Headers {
   private def parseDigestAuthParams(str: String): Option[Map[String,String]] = {
     str match {
       case DigestAuthHeader(paramsStr) =>
-        val params: Map[String, String] = Map(DigestAuthParam.findAllIn(paramsStr).matchData.map{ m => 
-            val k: String = m.group(1)
-            val v: String = if (null != m.group(2)) m.group(2) else m.group(3)
-            (k,v)
-          }.toSeq: _*)
+        val params: Map[String, String] = Map(DigestAuthParam.findAllIn(paramsStr).matchData.map{ m =>
+          val k: String = m.group(1)
+          val v: String = if (null != m.group(2)) m.group(2) else m.group(3)
+          (k,v)
+        }.toSeq: _*)
        
-       Some(params)
+        Some(params)
        
       case _ => None
     }
@@ -186,10 +186,10 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   def withNoCache: Headers
   
   /** These are the client side cookies that are being sent with the request */
-  def withCookies(c: Traversable[Cookie]): Headers
+  def withCookies(c: Seq[Cookie]): Headers
   
   /** These are the server side cookies that are being sent with the response */
-  def withSetCookies(c: Traversable[Cookie]): Headers
+  def withSetCookies(c: Seq[Cookie]): Headers
   
   /** These are the client side cookies that are being sent with the request */
   def addCookie(c: Cookie): Headers = {
@@ -210,8 +210,8 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   
   def getBool(name: CharSequence): Option[Boolean] = get(name).flatMap{ _.parseBoolean }
   def getDate(name: CharSequence): Option[ImmutableDate] = get(name).flatMap{ parseImmutableDate }
-  def getInt(name: CharSequence): Option[Int] = get(name).flatMap{ _.toIntOption }
-  def getLong(name: CharSequence): Option[Long] = get(name).flatMap{ _.toLongOption }
+  def getInt(name: CharSequence): Option[Int] = get(name).flatMap{ _.toIntOptionCached }
+  def getLong(name: CharSequence): Option[Long] = get(name).flatMap{ _.toLongOptionCached }
   
   /** A helper to find a client-sent cookie by name */
   def getCookie(name: String): Option[Cookie] = cookies.find{ _.name === name }
@@ -220,7 +220,7 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
    * If the Host header has a port in it (e.g. frugalmechanic.com:8080) then
    * this will strip it out.
    */
-  def hostWithoutPort: Option[String] = host.map { h: String =>
+  def hostWithoutPort: Option[String] = host.map { (h: String) =>
     val idx = h.indexOf(":")
     if(-1 === idx) h else h.substring(0, idx)
   }
@@ -228,9 +228,9 @@ sealed trait Headers extends IndexedSeqProxy[(String, String)] {
   /**
    * The port from the host header (e.g. frugalmechanic.com:8080)
    */
-  def hostPort: Option[Int] = host.flatMap { h: String =>
+  def hostPort: Option[Int] = host.flatMap { (h: String) =>
     val idx = h.indexOf(":")
-    if(-1 === idx) None else h.substring(idx + 1).toIntOption
+    if(-1 === idx) None else h.substring(idx + 1).toIntOptionCached
   }
   
   def accept: Option[String] = get(HttpHeaderNames.ACCEPT)
@@ -375,13 +375,13 @@ final case class ImmutableHeaders(nettyHeaders: HttpHeaders) extends Headers {
   
   def withNoCache: ImmutableHeaders = toMutableHeaders.withNoCache.toImmutableHeaders
   
-  def withCookies(c: Traversable[Cookie]): ImmutableHeaders = {
+  def withCookies(c: Seq[Cookie]): ImmutableHeaders = {
     val m = toMutableHeaders
     m.cookies = c
     m.toImmutableHeaders
   }
   
-  def withSetCookies(c: Traversable[Cookie]): ImmutableHeaders = {
+  def withSetCookies(c: Seq[Cookie]): ImmutableHeaders = {
     val m = toMutableHeaders
     m.setCookies = c
     m.toImmutableHeaders
@@ -405,12 +405,12 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
     case None    => nettyHeaders.remove(name)
   }
 
-  def setAll(name: CharSequence, values: Traversable[String]): Unit = {
+  def setAll(name: CharSequence, values: Seq[String]): Unit = {
     nettyHeaders.remove(name)
     values.foreach{ add(name, _) }
   }
 
-  def setAll(name: CharSequence, values: Option[Traversable[String]]): Unit = setAll(name, values.getOrElse{ Nil })
+  def setAll(name: CharSequence, values: Option[Seq[String]]): Unit = setAll(name, values.getOrElse{ Nil })
 
   def setDate(name: CharSequence, value: Date): Unit = setDate(name, Option(value))
   def setDate(name: CharSequence, value: Option[Date]): Unit = set(name, value.map{ formatDate })
@@ -465,12 +465,12 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
     this
   }
 
-  def withCookies(c: Traversable[Cookie]): MutableHeaders = {
+  def withCookies(c: Seq[Cookie]): MutableHeaders = {
     cookies = c
     this
   }
 
-  def withSetCookies(c: Traversable[Cookie]): MutableHeaders = {
+  def withSetCookies(c: Seq[Cookie]): MutableHeaders = {
     setCookies = c
     this
   }
@@ -568,8 +568,8 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   def cookie_=(v: String): Unit = set(HttpHeaderNames.COOKIE, v)
   def cookie_=(v: Option[String]): Unit = set(HttpHeaderNames.COOKIE, v)
 
-  def cookies_=(v: Traversable[Cookie]): Unit = cookie = if (v.nonEmpty) Some(ClientCookieEncoder.LAX.encode(v.toSeq.map{ _.toNettyCookie }.asJava)) else None
-  def cookies_=(v: Option[Traversable[Cookie]]): Unit = cookies = v.getOrElse{ Nil }
+  def cookies_=(v: Seq[Cookie]): Unit = cookie = if (v.nonEmpty) Some(ClientCookieEncoder.LAX.encode(v.toSeq.map{ _.toNettyCookie }.asJava)) else None
+  def cookies_=(v: Option[Seq[Cookie]]): Unit = cookies = v.getOrElse{ Nil }
 
   def date_=(v: ImmutableDate): Unit = setImmutableDate(HttpHeaderNames.DATE, v)
   def date_=(v: Option[ImmutableDate]): Unit = setImmutableDate(HttpHeaderNames.DATE, v)
@@ -662,14 +662,14 @@ final case class MutableHeaders(nettyHeaders: HttpHeaders = new DefaultHttpHeade
   def server_=(v: String): Unit = set(HttpHeaderNames.SERVER, v)
   def server_=(v: Option[String]): Unit = set(HttpHeaderNames.SERVER, v)
 
-  def setCookie_=(v: Traversable[String]): Unit = setAll(HttpHeaderNames.SET_COOKIE, v)
-  def setCookie_=(v: Option[Traversable[String]]): Unit = setAll(HttpHeaderNames.SET_COOKIE, v)
+  def setCookie_=(v: Seq[String]): Unit = setAll(HttpHeaderNames.SET_COOKIE, v)
+  def setCookie_=(v: Option[Seq[String]]): Unit = setAll(HttpHeaderNames.SET_COOKIE, v)
+  
+  def setCookies_=(v: Seq[Cookie]): Unit = setCookie = if (v.nonEmpty) Some(v.map{ (c: Cookie) => ServerCookieEncoder.LAX.encode(c.toNettyCookie) }) else None
+  def setCookies_=(v: Option[Seq[Cookie]]): Unit = setCookies = v.getOrElse{ Nil: Seq[Nothing] }
 
-  def setCookies_=(v: Traversable[Cookie]): Unit = setCookie = if (v.nonEmpty) Some(v.toSeq.map{ c: Cookie => ServerCookieEncoder.LAX.encode(c.toNettyCookie) }) else None
-  def setCookies_=(v: Option[Traversable[Cookie]]): Unit = setCookies = v.getOrElse{ Nil }
-
-  def setCookie2_=(v: Traversable[String]): Unit = setAll(HttpHeaderNames.SET_COOKIE2, v)
-  def setCookie2_=(v: Option[Traversable[String]]): Unit = setAll(HttpHeaderNames.SET_COOKIE2, v)
+  def setCookie2_=(v: Seq[String]): Unit = setAll(HttpHeaderNames.SET_COOKIE2, v)
+  def setCookie2_=(v: Option[Seq[String]]): Unit = setAll(HttpHeaderNames.SET_COOKIE2, v)
 
   def te_=(v: String): Unit = set(HttpHeaderNames.TE, v)
   def te_=(v: Option[String]): Unit = set(HttpHeaderNames.TE, v)

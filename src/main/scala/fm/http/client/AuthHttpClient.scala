@@ -36,7 +36,7 @@ abstract class AuthHttpClient extends HttpClientProxy {
     val originalAuthorization: Option[String] = makeAuthorization(request)
     val requestWithAuth: Request = withAuthorization(request, originalAuthorization)
     
-    val res: Future[AsyncResponse] = super.execute(requestWithAuth, timeout) flatMap { response: AsyncResponse =>
+    val res: Future[AsyncResponse] = super.execute(requestWithAuth, timeout) flatMap { (response: AsyncResponse) =>
       if (response.status.isUnauthorized) {
         val updatedAuthorization: Option[String] = makeAuthorization(request, response)
 

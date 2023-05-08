@@ -15,12 +15,12 @@
  */
 package fm.http.server
 
-import fm.common.Implicits._
 import fm.common.{ClassUtil, ImmutableDate, Logging}
+import fm.common.Implicits._
+import fm.common.JavaConverters._
 import fm.http.{MimeTypes, MutableHeaders, Status}
 import java.io.File
 import java.net.{URL, URLConnection}
-import scala.collection.JavaConverters._
 import scala.concurrent.duration._
 
 object StaticClasspathFileHandler {
@@ -64,7 +64,10 @@ final case class StaticClasspathFileHandler(roots: Seq[File], devMode: Boolean, 
   protected def lastModified(f: File): Long = ClassUtil.classpathLastModified(f)
   
   protected def handleNormal(request: Request, f: File, expirationSeconds: Int): Option[RequestHandler] = {
-    val url: URL = getClasspathResource(f).getOrElse{ return None }
+    val url: URL = getClasspathResource(f) match {
+      case Some(u) => u
+      case None => return None
+    }
     
     // Optimization - Use the normal file system handling if the URL is a file 
     if (url.isFile) return handleFileSystemFile(request, url.toFile, expirationSeconds)
@@ -72,7 +75,7 @@ final case class StaticClasspathFileHandler(roots: Seq[File], devMode: Boolean, 
     val conn: URLConnection = url.openConnection()
     
     val headers: MutableHeaders = MutableHeaders()
-    headers.date = ImmutableDate.now
+    headers.date = ImmutableDate.now()
     
     val ifModifiedSince: Option[ImmutableDate] = request.headers.ifModifiedSince
     

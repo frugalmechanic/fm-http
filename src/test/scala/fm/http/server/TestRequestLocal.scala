@@ -2,10 +2,11 @@ package fm.http.server
 
 import fm.common.IP
 import io.netty.handler.codec.http.HttpMethod
-import org.scalatest.{FunSuite, Matchers}
+import org.scalatest.funsuite.AnyFunSuite
+import org.scalatest.matchers.should.Matchers
 import scala.concurrent.ExecutionContext.Implicits.global
 
-final class TestRequestLocal extends FunSuite with Matchers {
+final class TestRequestLocal extends AnyFunSuite with Matchers {
 
   private def makeDummyRequest(): Request = Request.dummy(IP.empty, HttpMethod.GET, "/dummy")
 

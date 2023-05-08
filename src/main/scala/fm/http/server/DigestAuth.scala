@@ -46,17 +46,17 @@ object DigestAuth {
   def main(args: Array[String]): Unit = {
     CLIOptions.parse(args)
 
-    val realm: String = CLIOptions.realm.getOrElse {
+    val realm: String = CLIOptions.realm.value.getOrElse {
       print("Enter Realm: ")
       System.console.readLine().trim()
     }
     
-    val user: String = CLIOptions.user.getOrElse {
+    val user: String = CLIOptions.user.value.getOrElse {
       print("Enter User: ")
       System.console.readLine().trim()
     }
 
-    val pass: String = CLIOptions.pass.getOrElse {
+    val pass: String = CLIOptions.pass.value.getOrElse {
       print("Enter Password: ")
       val pw1: String = new String(System.console.readPassword())
 
@@ -133,7 +133,7 @@ final case class DigestAuth(
   
   private def response(isStale: Boolean): Future[Response] = {
     val nonce: String = DigestUtils.md5Hex(DigestNoncePrefix+System.currentTimeMillis.toString+secureRandom.nextLong.toString)
-    val opaque: String = DigestOpaqueCrypto.encryptBase64String(System.currentTimeMillis+":"+nonce)
+    val opaque: String = DigestOpaqueCrypto.encryptBase64String(System.currentTimeMillis.toString+":"+nonce)
 
     val stale: Seq[(String,String)] = if (isStale) Seq("stale" -> "true") else Seq()
 
@@ -149,19 +149,22 @@ final case class DigestAuth(
   }
   
   def isValid(request: Request): Boolean = {
-    val auth: String = request.headers.authorization.getOrElse{ return false } 
+    val auth: String = request.headers.authorization match {
+      case Some(s) => s
+      case None => return false
+    }
     
     auth match {
       case DigestAuthHeader(paramsStr) =>
         val params: Map[String, String] = Map(DigestAuthParam.findAllIn(paramsStr).matchData.map{ m => 
-            val k: String = m.group(1)
-            val v: String = if (null != m.group(2)) m.group(2) else m.group(3)
-            (k,v)
-          }.toSeq: _*)
+          val k: String = m.group(1)
+          val v: String = if (null != m.group(2)) m.group(2) else m.group(3)
+          (k,v)
+        }.toSeq: _*)
+
+        if (logger.isDebugEnabled) logger.debug(s"Request: ${request.method} ${request.uri}  Params: $params")
        
-       if (logger.isDebugEnabled) logger.debug(s"Request: ${request.method} ${request.uri}  Params: $params")
-       
-       isValid(request, params)
+        isValid(request, params)
        
       case _ => false
     }
@@ -196,12 +199,18 @@ final case class DigestAuth(
     }
     
     // Verify the opaque value was encrypted/signed by us
-    val opaqueMsg: String = DigestOpaqueCrypto.tryDecryptBase64String(pOpaque).getOrElse{
-      if (logger.isDebugEnabled) logger.debug("Auth Failed.  Cannot decode pOpaque")
-      return false
+    val opaqueMsg: String = DigestOpaqueCrypto.tryDecryptBase64String(pOpaque) match {
+      case Some(s) => s
+      case None =>
+        if (logger.isDebugEnabled) logger.debug("Auth Failed.  Cannot decode pOpaque")
+        return false
     }
-    
-    val Array(time,nonce) = opaqueMsg.split(':')
+
+    val split: Array[String] = opaqueMsg.split(':')
+    if (split.length =!= 2) return false
+
+    val time: String = split(0)
+    val nonce: String = split(1)
     
     // If the nonce doesn't match then return
     if (nonce != pNonce) {

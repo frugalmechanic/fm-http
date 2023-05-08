@@ -79,7 +79,7 @@ object DefaultHttpClient extends Logging {
   private case class EndPoint(host: String, port: Int, ssl: Boolean, proxy: Option[ProxyOptions]) {
     def prettyString: String = {
       val scheme: String = if (ssl) "https" else "http"
-      val proxyStr: String = proxy.map{ p: ProxyOptions => s" via ${p.host}:${p.port}" }.getOrElse("")
+      val proxyStr: String = proxy.map{ (p: ProxyOptions) => s" via ${p.host}:${p.port}" }.getOrElse("")
       s"${scheme}://$host:$port$proxyStr"
     }
   }
@@ -189,9 +189,9 @@ final case class DefaultHttpClient(
   private def executeWithRedirects(r: Request, timeout: Duration, redirectCount: Int): Future[AsyncResponse] = {
     if (redirectCount > maxRedirectCount) return Future.failed{ new TooManyRedirectsException(s"Too many redirects ($redirectCount) for request $r") }
     
-    execute0(r.url, r, timeout).flatMap { response: AsyncResponse =>
+    execute0(r.url, r, timeout).flatMap { (response: AsyncResponse) =>
       if (response.status === Status.MOVED_PERMANENTLY || response.status === Status.FOUND) {
-        response.headers.location.flatMap{ URI.get }.map{ location: URI =>
+        response.headers.location.flatMap{ URI.get }.map{ (location: URI) =>
           
           // Allow for a relative URL
           val redirectURL: URL = if (location.scheme.isDefined) location.toURL() else location.copy(
@@ -314,8 +314,8 @@ final case class DefaultHttpClient(
   private def executeRaw(url: URL, request: Request, timeout: Duration): Future[AsyncResponse] = {
     if (logger.isTraceEnabled) logger.trace(s"Sending Request:\n$traceSep\n$request\n$traceSep\n")
     
-    val scheme: String = url.scheme.getOrElse{ return Future.failed(new MalformedURLException("Missing Scheme")) }
-    val host: String = url.host.getOrElse{ return Future.failed(new MalformedURLException("Missing Host")) }
+    val scheme: String = if (url.scheme.isDefined) url.scheme.get else return Future.failed(new MalformedURLException("Missing Scheme"))
+    val host: String = if (url.host.isDefined) url.host.get else return Future.failed(new MalformedURLException("Missing Host"))
     
     val defaultPort: Int = scheme match {
       case "http" => 80
@@ -345,7 +345,7 @@ final case class DefaultHttpClient(
     
     val promise: Promise[AsyncResponse] = Promise()
     
-    val timeoutTask: TimeoutTask[_] = if (timeout.isFinite()) DefaultHttpClient.enableTimeoutTask(promise, timeout.asInstanceOf[FiniteDuration]) else null
+    val timeoutTask: TimeoutTask[_] = if (timeout.isFinite) DefaultHttpClient.enableTimeoutTask(promise, timeout.asInstanceOf[FiniteDuration]) else null
     
     getChannel(host, port, ssl, proxy).onComplete {
       case Success(ch) =>
@@ -398,14 +398,14 @@ final case class DefaultHttpClient(
     val ch: Channel = connectFuture.channel()
 
     // Note: DefaultHttpClient.enableTimeoutTask will handle canceling the task if the Promise is successfully completed
-    if (defaultConnectTimeout.isFinite()) DefaultHttpClient.enableTimeoutTask(promise, defaultConnectTimeout.asInstanceOf[FiniteDuration])
+    if (defaultConnectTimeout.isFinite) DefaultHttpClient.enableTimeoutTask(promise, defaultConnectTimeout.asInstanceOf[FiniteDuration])
 
     connectFuture.onComplete {
       case Success(_) => promise.trySuccess(ch)
       case Failure(ex) => promise.tryFailure(ex)
     }
     
-    if (null != pool) promise.future.map{ ch: Channel =>
+    if (null != pool) promise.future.map{ (ch: Channel) =>
       NettyHttpClientPipelineHandler.setChannelPool(ch, pool)
       ch
     } else {

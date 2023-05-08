@@ -16,7 +16,7 @@
 package fm.http.server
 
 final case class FilteredRequestRouter(router: RequestRouter, filter: RequestFilter) extends RequestRouter {
-  override def lookup(request: Request): Option[RequestHandler] = router.lookup(request).map{ handler: RequestHandler => handler.withFilter(filter) }
+  override def lookup(request: Request): Option[RequestHandler] = router.lookup(request).map{ (handler: RequestHandler) => handler.withFilter(filter) }
   
   override def beforeStartup(): Unit = router.beforeStartup()
   override def afterStartup(): Unit = router.afterStartup()

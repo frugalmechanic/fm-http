@@ -75,13 +75,13 @@ class RequestLocal[T] {
 
   final def set(value: Option[T])(implicit request: Request): Unit = request.synchronized {
     if (value.isDefined) set(value.get)
-    else remove
+    else remove()
   }
 
   final def set(value: T)(implicit request: Request): Unit = request.synchronized {
     if (null == value) {
       // We do not allow null values so treat those as removals
-      remove
+      remove()
     } else {
       initRequestLocalMap()
       requestLocalMap.put(this, value.asInstanceOf[AnyRef])

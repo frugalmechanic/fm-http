@@ -22,6 +22,7 @@ import scala.concurrent.{ExecutionContext, Future, Promise}
 import fm.common.Logging
 import fm.common.Implicits._
 import fm.http._
+import scala.util.matching.Regex
 
 object Response {
   def apply(response: HttpResponse, content: LinkedHttpContentReader)(implicit execution: ExecutionContext): AsyncResponse = new AsyncResponse(response, content)
@@ -62,9 +63,10 @@ sealed abstract class Response(response: HttpResponse) extends Closeable {
   protected def detectCharset(defaultCharset: Charset): Charset = {
     import Response.CharsetRegex
 
-    response.headers().get("Content-Type").toBlankOption.flatMap { contentType: String =>
+    response.headers().get("Content-Type").toBlankOption.flatMap { (contentType: String) =>
       val contentTypeCharset: Option[Charset] = for {
-        CharsetRegex(charset) <- CharsetRegex.findFirstIn(contentType)
+        charsetMatch: Regex.Match <- CharsetRegex.findFirstMatchIn(contentType)
+        charset: String = charsetMatch.group(1)
         if charsetIsSupported(charset)
       } yield Charset.forName(charset)
 

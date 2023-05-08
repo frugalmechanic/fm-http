@@ -87,7 +87,7 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
     super.channelReadComplete(ctx)
   }
   
-  override protected def channelRead(ctx: ChannelHandlerContext, msg: AnyRef): Unit = {
+  override def channelRead(ctx: ChannelHandlerContext, msg: AnyRef): Unit = {
     if (logger.isTraceEnabled) trace("channelRead - "+msg.getClass.getSimpleName)(ctx)
 
     try {
@@ -139,6 +139,9 @@ final class NettyHttpClientPipelineHandler(channelGroup: ChannelGroup) extends C
           }
         }
       }
+
+    // This was added to prevent Scala 2.13 from complaining about "match may not be exhaustive"
+    case _ => throw new NotImplementedError("Unexpected Condition")
   }
   
   private def channelReadHttpResponse(nettyResponse: HttpResponse, content: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext): Unit = {

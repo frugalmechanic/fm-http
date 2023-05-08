@@ -40,14 +40,17 @@ trait BasicAuth extends Auth with Logging {
   def isAuthorized(user: String, pass: String): Future[Boolean]
 
   final protected def requireAuthImpl(request: Request)(action: => Future[Response])(implicit executor: ExecutionContext): Future[Response] = {
-    isAuthorized(request).flatMap{ valid: Boolean =>
+    isAuthorized(request).flatMap{ (valid: Boolean) =>
       if (valid) action
       else Future.successful(Response(Status.UNAUTHORIZED, Headers(HttpHeaderNames.WWW_AUTHENTICATE -> s"""Basic realm="$realm"""")))
     }
   }
 
   final def isAuthorized(request: Request): Future[Boolean] = {
-    val auth: String = request.headers.authorization.getOrElse{ return Future.successful(false) }
+    val auth: String = request.headers.authorization match {
+      case Some(s) => s
+      case None => return Future.successful(false)
+    }
 
     Headers.parseBasicAuthorization(auth) match {
       case Some((user,pass)) => isAuthorized(user, pass)

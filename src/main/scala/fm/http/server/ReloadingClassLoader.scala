@@ -2,11 +2,11 @@ package fm.http.server
 
 import fm.common.IOUtils
 import fm.common.Implicits._
+import fm.common.JavaConverters._
 import java.io.InputStream
 import java.net.{URL, URLConnection}
 import java.security.{ProtectionDomain, Policy, CodeSource, CodeSigner}
 import java.util.concurrent.ConcurrentHashMap
-import scala.collection.JavaConverters._
 import scala.util.Try
 
 /**
@@ -38,7 +38,7 @@ final class ReloadingClassLoader(allowedPackages: Seq[String], parent: ClassLoad
   def seenClasses: Vector[String] = timestamps.keys().asScala.toVector
 
   /** Add classes we expect to exist (i.e. we will wait for them to become available) */
-  def addValidClasses(names: Iterable[String]): Unit = names.foreach { name: String =>
+  def addValidClasses(names: Iterable[String]): Unit = names.foreach { (name: String) =>
     timestamps.putIfAbsent(name, Long.MinValue)
   }
   

@@ -176,7 +176,7 @@ object MimeTypes {
       values.foreach{v => builder += v -> key }
     }
 
-    builder.result.toUniqueHashMap
+    builder.result().toUniqueHashMap
   }
 
   def forFile(f: File): Option[String] = getExtension(f.getName).flatMap{ forExtension }

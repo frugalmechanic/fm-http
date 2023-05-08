@@ -103,7 +103,7 @@ trait StaticFileHandlerBase extends RequestRouter {
     if (!isFileSystemFile(f)) return None
     
     val headers: MutableHeaders = MutableHeaders()
-    headers.date = ImmutableDate.now
+    headers.date = ImmutableDate.now()
     
     val ifModifiedSince: Option[ImmutableDate] = request.headers.ifModifiedSince
     
@@ -116,7 +116,7 @@ trait StaticFileHandlerBase extends RequestRouter {
     headers.contentType = MimeTypes.forFile(f).getOrElse(MimeTypes.BINARY)
     headers.lastModified = ImmutableDate(f.lastModified())
     headers.cacheControl = "public, max-age="+expirationSeconds
-    headers.expires = ImmutableDate.now + expirationSeconds.seconds
+    headers.expires = ImmutableDate.now() + expirationSeconds.seconds
 
     Some(RequestHandler.constant(FileResponse(Status.OK, headers, f)))
   }
@@ -146,9 +146,9 @@ trait StaticFileHandlerBase extends RequestRouter {
     val parts: Array[String] = path.split('/')
     
     // We don't allow dotfiles (e.g. ".foo") or stuff like "." or ".."
-    if (parts.exists{ p: String => p.startsWith(".") }) return None
+    if (parts.exists{ (p: String) => p.startsWith(".") }) return None
 
-    roots.findMapped{ root: File =>
+    roots.findMapped{ (root: File) =>
       val f: File = new File(root, parts.mkString(File.separator))
       tryResolveFile(path, uri, f)
     }
@@ -172,7 +172,7 @@ trait StaticFileHandlerBase extends RequestRouter {
     // Directory -- Check for index files
     if (isValidDir(f)) {
       // Check for index files
-      val idxFile: File = indexFiles.map{ idxPath: String => new File(f, idxPath)}.find{ isValidFile }.orNull
+      val idxFile: File = indexFiles.map{ (idxPath: String) => new File(f, idxPath)}.find{ isValidFile }.orNull
 
       if (isValidFile(idxFile)) {
         // If we are serving up an index file make sure we have a trailing slash on the request

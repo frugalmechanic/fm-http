@@ -59,11 +59,14 @@ final class DigestAuthHttpClient(user: String, pass: String, val client: HttpCli
       params += "nc" -> ncHex
     }
     
-    Headers.makeDigestAuthorization(params.result).toBlankOption
+    Headers.makeDigestAuthorization(params.result()).toBlankOption
   }
   
   protected def makeAuthorization(request: Request, response: Response): Option[String] = synchronized {
-    val params: Map[String,String] = response.headers.digestAuthParams.getOrElse{ return None }
+    val params: Map[String,String] = response.headers.digestAuthParams match {
+      case Some(p) => p
+      case None => return None
+    }
     
     // Update our params from the response
     realm = params.getOrElse("realm", null)

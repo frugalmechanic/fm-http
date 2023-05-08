@@ -134,6 +134,9 @@ final class NettyHttpServerPipelineHandler(
       require(null != contentBuilder, "Received an HttpContent but the contentBuilder is null!")
       contentBuilder += content
       if (contentBuilder.isDone) contentBuilder = null
+
+    // This was added to prevent Scala 2.13 from complaining about "match may not be exhaustive"
+    case _ => throw new NotImplementedError("Unexpected Condition")
   }
   
   protected def channelReadHttpRequest(nettyRequest: HttpRequest, content: Future[Option[LinkedHttpContent]])(implicit ctx: ChannelHandlerContext): Unit = {
@@ -152,7 +155,7 @@ final class NettyHttpServerPipelineHandler(
     response.recover { case ex: Throwable =>
       logger.error("Caught Exception waiting for Response Future - Sending Error Response", ex)
       makeErrorResponse(Status.INTERNAL_SERVER_ERROR)
-    }.foreach { res: Response =>
+    }.foreach { (res: Response) =>
       // We only want keep-alive if:
       //   1. The request wants it (either via HTTP 1.1 or an explicit "Connection: keep-alive" request header)
       //   2. We are below our maxRequestsPerConnection
@@ -226,12 +229,12 @@ final class NettyHttpServerPipelineHandler(
   }
   
   private def remoteIPForRequest(request: HttpRequest)(implicit ctx: ChannelHandlerContext): IP = {
-    import scala.collection.JavaConverters._
+    import fm.common.JavaConverters._
     import java.net.InetSocketAddress
 
     val headers: HttpHeaders = request.headers()
 
-    options.clientIPLookupSpecs.findMapped{ spec: HttpServerOptions.ClientIPLookupSpec =>
+    options.clientIPLookupSpecs.findMapped{ (spec: HttpServerOptions.ClientIPLookupSpec) =>
       val hasRequiredHeaderOrEmpty: Boolean = spec.requiredHeaderAndValue.map{ case (name: String, value: String) =>
         // If the requiredHeaderAndValue is set then we require it to be part of the headers
         headers.containsValue(name, value, false /* ignoreCase */)
@@ -278,8 +281,8 @@ final class NettyHttpServerPipelineHandler(
     }
 
     // Add in an X-Request-Id header if configured in the HttpServerOptions
-    options.requestIdResponseHeader.foreach { header: String =>
-      response.headers().add(header, request.id.toHex())
+    options.requestIdResponseHeader.foreach { (header: String) =>
+      response.headers().add(header, request.id.toHex)
     }
 
     // Add in any overrides
@@ -292,7 +295,7 @@ final class NettyHttpServerPipelineHandler(
         val headers: MutableHeaders = MutableHeaders(response.headers())
 
         // Apply any mutations to the headers (which will modify the underlying netty HttpHeaders)
-        builder.result.foreach{ f: (MutableHeaders => Unit) => f(headers) }
+        builder.result().foreach{ (f: (MutableHeaders => Unit)) => f(headers) }
     }
 
     response
@@ -378,7 +381,7 @@ final class NettyHttpServerPipelineHandler(
     }
 
     ctx.write(response, ctx.voidPromise())
-    ctx.writeAndFlush(obj).onComplete { res: Try[Void] =>
+    ctx.writeAndFlush(obj).onComplete { (res: Try[Void]) =>
       // Make sure our RandomAccessFile got closed
       raf.close()
 
@@ -534,6 +537,6 @@ final class NettyHttpServerPipelineHandler(
   }
 
   private def closeDelay(response: HttpResponse): Option[Int] = {
-    response.headers().get("X-Debug-Force-Connection-Close-Delay-Millis").toIntOption
+    response.headers().get("X-Debug-Force-Connection-Close-Delay-Millis").toIntOptionCached
   }
 }

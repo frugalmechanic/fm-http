@@ -15,7 +15,7 @@
  */
 package fm.http
 
-import fm.common.{ImmutableDate, Logging, ScheduledTaskRunner, TestHelpers}
+import fm.common.{ImmutableDate, Logging, ScheduledTaskRunner}
 import fm.common.Implicits._
 import fm.http.client.DefaultHttpClient
 import fm.http.client.DefaultHttpClient.TimeoutTaskTimeoutException
@@ -25,7 +25,9 @@ import java.io.{File, RandomAccessFile}
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.util.concurrent.ThreadLocalRandom
-import org.scalatest.{BeforeAndAfterAll, FunSuite, Matchers}
+import org.scalatest.BeforeAndAfterAll
+import org.scalatest.funsuite.AnyFunSuite
+import org.scalatest.matchers.should.Matchers
 import scala.concurrent.{Await, Future, Promise}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
@@ -168,10 +170,10 @@ object TestClientAndServer {
     case GET(simple"/delay/${INT(sleepMillis)}") => Thread.sleep(sleepMillis); Response(Status.OK, "Ok")
 
     case GET("/silent_close_after_response") => Response.Ok(Headers("X-Debug-Force-Connection-Close" -> "true"), "OK")
-    case POST("/silent_close_after_response") => request.content.readToString().map{ s: String => Response.Ok(Headers("X-Debug-Force-Connection-Close" -> "true"), s) }
+    case POST("/silent_close_after_response") => request.content.readToString().map{ (s: String) => Response.Ok(Headers("X-Debug-Force-Connection-Close" -> "true"), s) }
 
     case GET(simple"/silent_close_after_response/delay/${INT(sleepMillis)}") => Response.Ok(Headers("X-Debug-Force-Connection-Close" -> "true", "X-Debug-Force-Connection-Close-Delay-Millis" -> sleepMillis.toString), "OK")
-    case POST(simple"/silent_close_after_response/delay/${INT(sleepMillis)}") => request.content.readToString().map{ s: String => Response.Ok(Headers("X-Debug-Force-Connection-Close" -> "true", "X-Debug-Force-Connection-Close-Delay-Millis" -> sleepMillis.toString), s) }
+    case POST(simple"/silent_close_after_response/delay/${INT(sleepMillis)}") => request.content.readToString().map{ (s: String) => Response.Ok(Headers("X-Debug-Force-Connection-Close" -> "true", "X-Debug-Force-Connection-Close-Delay-Millis" -> sleepMillis.toString), s) }
 
     case GET("/header_modifications")     => {
       implicit val r: Request = request
@@ -185,7 +187,7 @@ object TestClientAndServer {
       // Should remove the "remove_me" header that gets set below
       Response.removeHeader("remove_me")
 
-      Response.modifyHeaders{ headers: MutableHeaders =>
+      Response.modifyHeaders{ (headers: MutableHeaders) =>
         headers.add("Hello", "World")
         headers.date = ImmutableDate(1234567890000L)
       }
@@ -208,8 +210,8 @@ object TestClientAndServer {
       }
     }
 
-    case POST("/upload")                  => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ sum: Int => Response.Ok(sum.toString) }
-    case POST("/close/upload")            => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ sum: Int => Response(Status(200), Headers("Connection" -> "close"), sum.toString) }
+    case POST("/upload")                  => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ (sum: Int) => Response.Ok(sum.toString) }
+    case POST("/close/upload")            => request.content.foldLeft(0){ (sum,buf) => sum + buf.readableBytes() }.map{ (sum: Int) => Response(Status(200), Headers("Connection" -> "close"), sum.toString) }
   }
 
   private def handleBasicAuth(request: Request): Response = {
@@ -261,7 +263,7 @@ object TestClientAndServer {
   }
   
   def wrap(request: Request, f: => Future[Response]): Future[Response] = {
-    request.params.getFirstNonBlank("delay").flatMap{ _.toIntOption } match {
+    request.params.getFirstNonBlank("delay").flatMap{ _.toIntOptionCached } match {
       case Some(delay) =>
         val p = Promise[Response]()
         ScheduledTaskRunner.global.schedule(delay.seconds){ p.completeWith(f) }
@@ -272,7 +274,7 @@ object TestClientAndServer {
 }
 
 // TODO: split this into a "stress test" mode and a "normal" unit testing mode
-final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAfterAll {
+final class TestClientAndServer extends AnyFunSuite with Matchers with BeforeAndAfterAll {
   import TestClientAndServer.{charForIdx, client, clientNoFollowRedirects, makeLinkedHttpContent, OneMB, port, RandomBodySizeMax, requestCount}
   import fm.http.client._
   
@@ -298,7 +300,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     httpClient: HttpClient = client,
     headers: Headers = Headers.empty,
     timeout: Duration = Duration.Inf
-  ): FullStringResponse = TestHelpers.withCallerInfo{
+  ): FullStringResponse = {
     val f: Future[FullStringResponse] = getFullStringAsync(path, httpClient, headers, timeout)
     val res: FullStringResponse = Await.result(f, 10.seconds)
     res.status.code should equal (expectedCode)
@@ -312,7 +314,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     expectedCode: Int,
     expectedBody: String,
     httpClient: HttpClient = client
-  ): Unit = TestHelpers.withCallerInfo{
+  ): Unit = {
     val f: Future[FullStringResponse] = postFullStringAsync(path, postBody, httpClient)
     val res: FullStringResponse = Await.result(f, 10.seconds)
     res.status.code should equal (expectedCode)
@@ -337,7 +339,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   }
   
   private def getAndVerifyData(path: String): Future[Boolean] = {
-    client.getAsync(makeUrl(path)).flatMap{ response: AsyncResponse =>
+    client.getAsync(makeUrl(path)).flatMap{ (response: AsyncResponse) =>
       response.status.code should equal (200)
       response.body.get.foldLeft(0L){ (idx, buf) =>
         var i: Int = 0
@@ -358,7 +360,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   }
 
   private def postFile(path: String, content: LinkedHttpContent, expectedResponseCode: Int = 200, expectedResponseBody: String = "OK"): Future[Boolean] = {
-    client.postAsync(makeUrl(path), content).map{ response: AsyncResponse =>
+    client.postAsync(makeUrl(path), content).map{ (response: AsyncResponse) =>
       response.status.code shouldBe expectedResponseCode
       val body: Future[String] = response.body.map{ _.readToString() }.getOrElse(Future.successful(""))
       Await.result(body, 60.seconds) shouldBe expectedResponseBody
@@ -407,7 +409,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     // Uses async non-blocking calls to make as many connections as possible to the server
     val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => getFullStringAsync("/200") }
     val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+    Await.result(combined, 60.seconds).foreach { (res: FullStringResponse) =>
       res.status.code should equal (200)
       res.body should equal ("OK")
     }
@@ -418,7 +420,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     val body: String = makeBody(ThreadLocalRandom.current().nextInt(RandomBodySizeMax))
     val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => postFullStringAsync("/upload", body) }
     val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+    Await.result(combined, 60.seconds).foreach { (res: FullStringResponse) =>
       res.status.code should equal (200)
       res.body should equal (body.length.toString)
     }
@@ -428,7 +430,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     // Uses async non-blocking calls to make as many connections as possible to the server
     val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => getFullStringAsync("/close/200") }
     val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+    Await.result(combined, 60.seconds).foreach { (res: FullStringResponse) =>
       res.status.code should equal (200)
       res.body should equal ("OK")
     }
@@ -439,7 +441,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     val body: String = makeBody(ThreadLocalRandom.current().nextInt(RandomBodySizeMax))
     val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => postFullStringAsync("/close/upload", body) }
     val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+    Await.result(combined, 60.seconds).foreach { (res: FullStringResponse) =>
       res.status.code should equal (200)
       res.body should equal (body.length.toString)
     }
@@ -449,7 +451,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     // Uses async non-blocking calls to make as many connections as possible to the server
     val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => getFullStringAsync("/200?delay=1") }
     val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+    Await.result(combined, 60.seconds).foreach { (res: FullStringResponse) =>
       res.status.code should equal (200)
       res.body should equal ("OK")
     }
@@ -459,7 +461,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     // Uses async non-blocking calls to make as many connections as possible to the server
     val futures: Seq[Future[FullStringResponse]] = (1 to requestCount).map{ _ => getFullStringAsync("/close/200?delay=1") }
     val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+    Await.result(combined, 60.seconds).foreach { (res: FullStringResponse) =>
       res.status.code should equal (200)
       res.body should equal ("OK")
     }
@@ -496,7 +498,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     // Uses async non-blocking calls to make as many connections as possible to the server
     val futures: Seq[Future[Boolean]] = (1 to 1000).map{ _ => getAndVerifyData("/data_one_mb") }
     val combined: Future[Seq[Boolean]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: Boolean =>
+    Await.result(combined, 60.seconds).foreach { (res: Boolean) =>
       res should equal (true)
     }
   }
@@ -504,7 +506,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
   test("Sync GET Requests with limited server connections (10 Requests) / Server closes unexpectedly - 100ms sleep") {
     val clientLimitedConnectionsPerHost: DefaultHttpClient = TestClientAndServer.makeClientLimitedConnectionsPerHost()
 
-    (1 to 10).foreach { i: Int =>
+    (1 to 10).foreach { (i: Int) =>
       getSync("/silent_close_after_response", 200, "OK", clientLimitedConnectionsPerHost)
       // The thread pool should have enough time to detect that the remote side closed the connection before it makes another request
       Thread.sleep(100)
@@ -557,7 +559,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     // Uses async non-blocking calls to make as many connections as possible to the server
     val futures: Seq[Future[FullStringResponse]] = (1 to 100).map{ _ => getFullStringAsync("/silent_close_after_response", clientLimitedConnectionsPerHost) }
     val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+    Await.result(combined, 60.seconds).foreach { (res: FullStringResponse) =>
       res.status.code should equal (200)
       res.body should equal ("OK")
     }
@@ -570,7 +572,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     val body: String = makeBody(ThreadLocalRandom.current().nextInt(RandomBodySizeMax))
     val futures: Seq[Future[FullStringResponse]] = (1 to 100).map{ _ => postFullStringAsync("/silent_close_after_response", body, clientLimitedConnectionsPerHost) }
     val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+    Await.result(combined, 60.seconds).foreach { (res: FullStringResponse) =>
       res.status.code should equal (200)
       res.body should equal (body)
     }
@@ -580,9 +582,9 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     val clientLimitedConnectionsPerHost: DefaultHttpClient = TestClientAndServer.makeClientLimitedConnectionsPerHost()
 
     // Uses async non-blocking calls to make as many connections as possible to the server
-    val futures: Seq[Future[FullStringResponse]] = (1 to 100).map{ i: Int => getFullStringAsync(s"/silent_close_after_response/delay/$i", clientLimitedConnectionsPerHost) }
+    val futures: Seq[Future[FullStringResponse]] = (1 to 100).map{ (i: Int) => getFullStringAsync(s"/silent_close_after_response/delay/$i", clientLimitedConnectionsPerHost) }
     val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+    Await.result(combined, 60.seconds).foreach { (res: FullStringResponse) =>
       res.status.code should equal (200)
       res.body should equal ("OK")
     }
@@ -593,9 +595,9 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
 
     // Uses async non-blocking calls to make as many connections as possible to the server
     val body: String = makeBody(ThreadLocalRandom.current().nextInt(RandomBodySizeMax))
-    val futures: Seq[Future[FullStringResponse]] = (1 to 100).map{ i: Int => postFullStringAsync(s"/silent_close_after_response/delay/$i", body, clientLimitedConnectionsPerHost) }
+    val futures: Seq[Future[FullStringResponse]] = (1 to 100).map{ (i: Int) => postFullStringAsync(s"/silent_close_after_response/delay/$i", body, clientLimitedConnectionsPerHost) }
     val combined: Future[Seq[FullStringResponse]] = Future.sequence(futures)
-    Await.result(combined, 60.seconds).foreach { res: FullStringResponse =>
+    Await.result(combined, 60.seconds).foreach { (res: FullStringResponse) =>
       res.status.code should equal (200)
       res.body should equal (body)
     }
@@ -799,7 +801,7 @@ final class TestClientAndServer extends FunSuite with Matchers with BeforeAndAft
     client.getChannelPool("127.0.0.1", port, false, None).getOrElse{ throw new Exception("Missing ChannelPool") }
   }
 
-  private def checkIp(expected: String, headers: (String,String)*): Unit = TestHelpers.withCallerInfo{
+  private def checkIp(expected: String, headers: (String,String)*): Unit = {
     getSync("/ip", 200, expected, headers = Headers(headers:_*))
   }
 }
